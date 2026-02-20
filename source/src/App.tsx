@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle } from 'lucide-react'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, runAction, getSettings, saveSettings, apiBase, authUser } from './api'
+import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, authUser } from './api'
 import './App.css'
 
 type Tab = 'dashboard' | 'memory' | 'files' | 'actions' | 'logs'
@@ -120,6 +120,8 @@ function Files({ toast }: { toast: (m: string) => void }) {
   const [entries, setEntries] = useState<{ name: string; isDir: boolean }[]>([])
   const [currentPath, setCurrentPath] = useState('')
   const [viewing, setViewing] = useState<{ name: string; content: string } | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
 
   const loadDir = useCallback(async (p: string) => {
@@ -140,16 +142,35 @@ function Files({ toast }: { toast: (m: string) => void }) {
     try {
       const r = await readFile(full)
       setViewing({ name: full, content: r.content || '' })
+      setDraft(r.content || '')
+      setEditing(false)
     } catch (e: any) { toast(`Error: ${e.message}`) }
+  }
+
+  const save = async () => {
+    if (!viewing) return
+    try {
+      await writeFile(viewing.name, draft)
+      toast('Saved ✅')
+      setViewing({ ...viewing, content: draft })
+      setEditing(false)
+    } catch (e: any) { toast(`Save failed: ${e.message}`) }
   }
 
   if (viewing) return (
     <div className="file-view">
       <div className="file-view-header">
-        <button className="icon-btn" onClick={() => setViewing(null)}><X size={18} /></button>
+        <button className="icon-btn" onClick={() => { setViewing(null); setEditing(false) }}><X size={18} /></button>
         <span className="file-view-title" style={{ fontSize: '11px' }}>{viewing.name}</span>
+        {!editing
+          ? <button className="icon-btn" onClick={() => setEditing(true)}><Edit3 size={18} /></button>
+          : <button className="icon-btn ok" onClick={save}><Save size={18} /></button>
+        }
       </div>
-      <pre className="file-pre">{viewing.content}</pre>
+      {editing
+        ? <textarea className="file-editor" value={draft} onChange={e => setDraft(e.target.value)} />
+        : <pre className="file-pre">{viewing.content}</pre>
+      }
     </div>
   )
 

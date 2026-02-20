@@ -189,6 +189,18 @@ app.get('/api/agent/status', (req, res) => {
   }
 });
 
+app.post('/api/files/write', (req, res) => {
+  try {
+    const WORKSPACE = getWorkspace(req);
+    const { path: rel, content } = req.body;
+    if (!rel || rel.includes('..')) return res.status(400).json({ error: 'Invalid path' });
+    writeFileSync(`${WORKSPACE}/${rel}`, content, 'utf-8');
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
 // ── Actions ───────────────────────────────────────────────────
 const SAFE_ACTIONS = {
   restart: () => execSync('openclaw gateway restart', { timeout: 10000 }).toString(),

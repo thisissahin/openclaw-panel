@@ -41,6 +41,7 @@ export const readMemory = (file: string) => req(`/api/memory/read?file=${encodeU
 export const writeMemory = (file: string, content: string) => req('/api/memory/write', 'POST', { file, content });
 export const listFiles = (path = '') => req(`/api/files/list?path=${encodeURIComponent(path)}`);
 export const readFile = (path: string) => req(`/api/files/read?path=${encodeURIComponent(path)}`);
+export const writeFile = (path: string, content: string) => req('/api/files/write', 'POST', { path, content });
 export const runAction = (action: string) => req('/api/action', 'POST', { action });
 
 export const authUser = (userData: any) => req('/api/auth', 'POST', { userData });
