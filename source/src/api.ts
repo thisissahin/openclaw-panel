@@ -44,6 +44,8 @@ export const readFile = (path: string) => req(`/api/files/read?path=${encodeURIC
 export const writeFile = (path: string, content: string) => req('/api/files/write', 'POST', { path, content });
 export const sendChat = (message: string, contextFiles: { name: string; content: string }[]) =>
   req('/api/chat/send', 'POST', { message, contextFiles });
+export const injectContext = (contextFiles: { name: string; content: string }[]) =>
+  req('/api/chat/inject', 'POST', { contextFiles });
 export const runAction = (action: string) => req('/api/action', 'POST', { action });
 
 export const authUser = (userData: any) => req('/api/auth', 'POST', { userData });
