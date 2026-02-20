@@ -42,6 +42,8 @@ export const writeMemory = (file: string, content: string) => req('/api/memory/w
 export const listFiles = (path = '') => req(`/api/files/list?path=${encodeURIComponent(path)}`);
 export const readFile = (path: string) => req(`/api/files/read?path=${encodeURIComponent(path)}`);
 export const writeFile = (path: string, content: string) => req('/api/files/write', 'POST', { path, content });
+export const sendChat = (message: string, contextFiles: { name: string; content: string }[]) =>
+  req('/api/chat/send', 'POST', { message, contextFiles });
 export const runAction = (action: string) => req('/api/action', 'POST', { action });
 
 export const authUser = (userData: any) => req('/api/auth', 'POST', { userData });

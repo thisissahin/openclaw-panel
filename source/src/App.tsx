@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle } from 'lucide-react'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, authUser } from './api'
+import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Send } from 'lucide-react'
+import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, sendChat, runAction, getSettings, saveSettings, apiBase, authUser } from './api'
 import './App.css'
 
 type Tab = 'dashboard' | 'memory' | 'files' | 'actions' | 'logs'
@@ -116,6 +116,8 @@ function Memory({ toast }: { toast: (m: string) => void }) {
 }
 
 // ─── Files ───────────────────────────────────────────────────
+type CtxFile = { name: string; content: string }
+
 function Files({ toast }: { toast: (m: string) => void }) {
   const [entries, setEntries] = useState<{ name: string; isDir: boolean }[]>([])
   const [currentPath, setCurrentPath] = useState('')
@@ -123,6 +125,9 @@ function Files({ toast }: { toast: (m: string) => void }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
+  const [context, setContext] = useState<CtxFile[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [sending, setSending] = useState(false)
 
   const loadDir = useCallback(async (p: string) => {
     setLoading(true)
@@ -157,11 +162,40 @@ function Files({ toast }: { toast: (m: string) => void }) {
     } catch (e: any) { toast(`Save failed: ${e.message}`) }
   }
 
-  if (viewing) return (
-    <div className="file-view">
+  const addToContext = async (name: string, content?: string) => {
+    if (context.find(c => c.name === name)) { toast('Already in context'); return }
+    try {
+      const text = content ?? (await readFile(name)).content ?? ''
+      setContext(prev => [...prev, { name, content: text }])
+      toast(`📎 ${name.split('/').pop()}`)
+    } catch (e: any) { toast(`Error: ${e.message}`) }
+  }
+
+  const removeFromContext = (name: string) => setContext(prev => prev.filter(c => c.name !== name))
+
+  const handleSend = async () => {
+    if (!chatInput.trim() && context.length === 0) return
+    setSending(true)
+    try {
+      await sendChat(chatInput, context)
+      setChatInput('')
+      toast('Sent ✅ — reply coming in Telegram')
+    } catch (e: any) { toast(`Failed: ${e.message}`) }
+    finally { setSending(false) }
+  }
+
+  const inContext = (name: string) => !!context.find(c => c.name === name)
+
+  const fileViewer = viewing && (
+    <div className="file-view" style={{ flex: 1, overflow: 'hidden' }}>
       <div className="file-view-header">
         <button className="icon-btn" onClick={() => { setViewing(null); setEditing(false) }}><X size={18} /></button>
         <span className="file-view-title" style={{ fontSize: '11px' }}>{viewing.name}</span>
+        <button
+          className={`icon-btn ${inContext(viewing.name) ? 'ok' : ''}`}
+          title="Add to context"
+          onClick={() => addToContext(viewing.name, viewing.content)}
+        ><Paperclip size={18} /></button>
         {!editing
           ? <button className="icon-btn" onClick={() => setEditing(true)}><Edit3 size={18} /></button>
           : <button className="icon-btn ok" onClick={save}><Save size={18} /></button>
@@ -174,8 +208,8 @@ function Files({ toast }: { toast: (m: string) => void }) {
     </div>
   )
 
-  return (
-    <div className="tab-content">
+  const dirListing = !viewing && (
+    <div className="files-body">
       <div className="path-bar">
         <span>/{currentPath}</span>
         {currentPath && (
@@ -183,11 +217,55 @@ function Files({ toast }: { toast: (m: string) => void }) {
         )}
       </div>
       {loading && <div className="center-msg">Loading...</div>}
-      {entries.map(e => (
-        <button key={e.name} className="list-item" onClick={() => open(e)}>
-          <span>{e.isDir ? '📁' : '📄'}</span><span>{e.name}</span>
+      {entries.map(e => {
+        const full = currentPath ? `${currentPath}/${e.name}` : e.name
+        return (
+          <div key={e.name} className="list-item-row">
+            <button className="list-item-main" onClick={() => open(e)}>
+              <span>{e.isDir ? '📁' : '📄'}</span>
+              <span>{e.name}</span>
+            </button>
+            {!e.isDir && (
+              <button
+                className={`context-add-btn ${inContext(full) ? 'active' : ''}`}
+                onClick={() => addToContext(full)}
+                title="Add to context"
+              ><Paperclip size={14} /></button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  return (
+    <div className="files-wrapper">
+      {context.length > 0 && (
+        <div className="context-tray">
+          <span className="context-tray-label">📎</span>
+          {context.map(f => (
+            <div key={f.name} className="context-chip">
+              <span>{f.name.split('/').pop()}</span>
+              <button onClick={() => removeFromContext(f.name)}><X size={11} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+      {fileViewer}
+      {dirListing}
+      <div className="chat-input-bar">
+        <textarea
+          className="chat-textarea"
+          value={chatInput}
+          onChange={e => setChatInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+          placeholder={context.length > 0 ? `Ask about ${context.length} file${context.length > 1 ? 's' : ''}…` : 'Add files to context, then ask…'}
+          rows={1}
+        />
+        <button className="chat-send-btn" onClick={handleSend} disabled={sending || (!chatInput.trim() && context.length === 0)}>
+          <Send size={16} />
         </button>
-      ))}
+      </div>
     </div>
   )
 }
@@ -379,7 +457,7 @@ export default function App() {
         <span className="app-title">🌙 OpenClaw Panel</span>
         <button className="icon-btn" onClick={() => setShowSettings(true)}><Settings size={18} /></button>
       </header>
-      <main className={`app-main ${tab === 'logs' ? 'no-scroll' : ''}`}>
+      <main className={`app-main ${(tab === 'logs' || tab === 'files') ? 'no-scroll' : ''}`}>
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'memory' && <Memory toast={toast} />}
         {tab === 'files' && <Files toast={toast} />}

@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile } from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createServer } from 'http';
@@ -195,6 +195,35 @@ app.post('/api/files/write', (req, res) => {
     const { path: rel, content } = req.body;
     if (!rel || rel.includes('..')) return res.status(400).json({ error: 'Invalid path' });
     writeFileSync(`${WORKSPACE}/${rel}`, content, 'utf-8');
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+// ── Chat / Context injection ──────────────────────────────────
+app.post('/api/chat/send', (req, res) => {
+  try {
+    const { message, contextFiles } = req.body;
+
+    let fullMessage = '';
+    if (contextFiles && contextFiles.length > 0) {
+      for (const file of contextFiles) {
+        fullMessage += `[File: ${file.name}]\n${file.content}\n\n---\n\n`;
+      }
+    }
+    fullMessage += message || '';
+
+    if (!fullMessage.trim()) return res.status(400).json({ error: 'Empty message' });
+
+    const result = spawnSync(
+      'openclaw',
+      ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram'],
+      { timeout: 30000, encoding: 'utf-8' }
+    );
+
+    if (result.error) throw result.error;
+
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
