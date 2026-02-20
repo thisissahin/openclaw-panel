@@ -257,13 +257,15 @@ function Files({ toast }: { toast: (m: string) => void }) {
       {fileViewer}
       {dirListing}
       {sentLog.length > 0 && (
-        <div className="sent-log">
+        <div className="chat-log">
           {sentLog.map((s, i) => (
-            <div key={i} className="sent-log-entry">
-              <span className="sent-log-time">{s.time}</span>
-              <div className="sent-log-body">
-                {s.files.length > 0 && <div className="sent-log-files">{s.files.map(f => `📎 ${f}`).join(' ')}</div>}
-                {s.text && <div className="sent-log-text">{s.text}</div>}
+            <div key={i} className="chat-bubble-row">
+              <div className="chat-bubble">
+                {s.files.map(f => (
+                  <div key={f} className="chat-attachment">📎 {f}</div>
+                ))}
+                {s.text && <div className="chat-bubble-text">{s.text}</div>}
+                <div className="chat-bubble-time">{s.time}</div>
               </div>
             </div>
           ))}
