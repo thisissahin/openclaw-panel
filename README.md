@@ -4,7 +4,7 @@
 A decentralized AI Agent OS on Telegram/TON. Supporting multiple runtimes (NanoBot, OpenClaw) via a unified interface.
 
 ## 📂 Project Structure
-- **/source** -> Symbolic link to `/root/openclaw-panel` (The actual code)
+- **/source** -> The actual code (Panel API, WebSocket, Core, Models)
 - **/docs** -> Architecture, Roadmap, and API specs
 - **/backups** -> Database and config snapshots
 
@@ -12,7 +12,9 @@ A decentralized AI Agent OS on Telegram/TON. Supporting multiple runtimes (NanoB
 - [x] **Panel V2** (Custom React UI) deployed.
 - [x] **Live Logs** (WebSocket) implemented.
 - [x] **Registry & Auth** (SQLite + Telegram `initData`) working.
-- [ ] **Provisioning Script** (Docker isolation) - *Next Priority*
+- [x] **Core Refactor** (Models & Core separation) - *Completed*
+- [x] **Workspace Provisioning** (Auto-Soul generation) - *Implemented*
+- [ ] **Docker Spawner** (Real container lifecycle) - *In Progress*
 - [ ] **TON Integration** - *Planned*
 
 ## 📜 Key Documents
