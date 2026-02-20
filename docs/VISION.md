@@ -133,6 +133,7 @@ See `ARCHITECTURE.md` for full technical detail.
 
 - [ ] Main Agent template (Soul + onboarding instructions + platform knowledge)
 - [ ] Telegram Mini App Panel v1: My Agents, Memory, Logs tabs
+- [ ] **Skill Manager (Dynamic Context Toggle)** — UI to enable/disable skills to save tokens/cost
 - [ ] Free trial (50k tokens auto-granted on signup)
 
 ### Phase 3 — TON Economic Layer

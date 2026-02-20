@@ -50,3 +50,6 @@ export const runAction = (action: string) => req('/api/action', 'POST', { action
 
 export const authUser = (userData: any) => req('/api/auth', 'POST', { userData });
 export const getUserProfile = () => req('/api/user/profile');
+
+export const getSkills = () => req('/api/skills');
+export const toggleSkill = (name: string, enabled: boolean) => req('/api/skills/toggle', 'POST', { name, enabled });

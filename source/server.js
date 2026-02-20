@@ -7,6 +7,9 @@ import { dirname, join } from 'path';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import db from './db.js';
+import { UserModel } from './models/User.js';
+import { Provisioning } from './core/provisioning.js';
+import { SkillManager } from './core/skill-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOKEN = process.env.PANEL_TOKEN || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae';
@@ -126,9 +129,6 @@ app.get('/api/files/read', (req, res) => {
   }
 });
 
-import { UserModel } from './models/User.js';
-import { Provisioning } from './core/provisioning.js';
-
 // ─── User Management / Auth ───────────────────────────────────
 app.post('/api/auth', (req, res) => {
   const { userData } = req.body;
@@ -240,7 +240,7 @@ app.post('/api/chat/send', (req, res) => {
 });
 
 // ── Silent Context Injection ──────────────────────────────────
-app.post('/api/chat/inject', (req, res) => {
+app.post(['/api/chat/inject', '/api/context/inject'], async (req, res) => {
   try {
     const { contextFiles } = req.body;
     const agentId = req.headers['x-agent-id'] || 'main';
@@ -297,6 +297,27 @@ app.post('/api/action', (req, res) => {
     res.json({ ok: true, output });
   } catch (e) {
     res.json({ ok: false, error: String(e), output: e.stdout?.toString() || '' });
+  }
+});
+
+// ── Skills Manager ────────────────────────────────────────────
+app.get('/api/skills', (req, res) => {
+  try {
+    const skills = SkillManager.list();
+    res.json({ ok: true, skills });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.post('/api/skills/toggle', (req, res) => {
+  try {
+    const { name, enabled } = req.body;
+    if (!name) return res.status(400).json({ error: 'No skill name' });
+    const result = SkillManager.toggle(name, enabled);
+    res.json(result);
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
   }
 });
 

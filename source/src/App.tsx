@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Send } from 'lucide-react'
+import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, sendChat, injectContext, runAction, getSettings, saveSettings, apiBase, authUser } from './api'
+import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, authUser, getSkills, toggleSkill } from './api'
 import './App.css'
 
-type Tab = 'dashboard' | 'memory' | 'files' | 'actions' | 'logs'
+type Tab = 'dashboard' | 'memory' | 'files' | 'skills' | 'actions' | 'logs'
 
 // ─── Toast ───────────────────────────────────────────────────
 function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
@@ -112,6 +112,58 @@ function Memory({ toast }: { toast: (m: string) => void }) {
           <span>📄</span><span>{f}</span>
         </button>
       ))}
+    </div>
+  )
+}
+
+// ─── Skills ──────────────────────────────────────────────────
+function Skills({ toast }: { toast: (m: string) => void }) {
+  const [skills, setSkills] = useState<{ name: string; enabled: boolean }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    try {
+      const r = await getSkills()
+      const list = [
+        ...(r.skills.active || []),
+        ...(r.skills.disabled || [])
+      ].sort((a, b) => a.name.localeCompare(b.name))
+      setSkills(list)
+    } catch (e: any) { toast(`Error: ${e.message}`) }
+    finally { setLoading(false) }
+  }, [toast])
+
+  useEffect(() => { load() }, [load])
+
+  const toggle = async (name: string, current: boolean) => {
+    try {
+      toast(`Updating ${name}...`)
+      await toggleSkill(name, !current)
+      setSkills(prev => prev.map(s => s.name === name ? { ...s, enabled: !current } : s))
+      toast(`${name} ${!current ? 'enabled' : 'disabled'} ✅`)
+    } catch (e: any) { toast(`Error: ${e.message}`) }
+  }
+
+  return (
+    <div className="tab-content" style={{ overflowY: 'auto' }}>
+      <div className="status-bar ok" style={{ marginBottom: '4px', flexShrink: 0 }}>
+        <span>Toggle skills to save tokens</span>
+        <button className="icon-btn" onClick={load}><RefreshCw size={14} /></button>
+      </div>
+      {loading && <div className="center-msg">Loading...</div>}
+      <div className="skill-list">
+        {skills.map(s => (
+          <div key={s.name} className="skill-item">
+            <div className="skill-info">
+              <span className="skill-name">{s.name}</span>
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={s.enabled} onChange={() => toggle(s.name, s.enabled)} />
+              <span className="slider"></span>
+            </label>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -303,10 +355,11 @@ export default function App() {
         <span className="app-title">🌙 OpenClaw Panel</span>
         <button className="icon-btn" onClick={() => setShowSettings(true)}><Settings size={18} /></button>
       </header>
-      <main className={`app-main ${(tab === 'logs' || tab === 'files') ? 'no-scroll' : ''}`}>
+      <main className={`app-main ${(tab === 'logs' || tab === 'files' || tab === 'skills') ? 'no-scroll' : ''}`}>
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'memory' && <Memory toast={toast} />}
         {tab === 'files' && <Files toast={toast} />}
+        {tab === 'skills' && <Skills toast={toast} />}
         {tab === 'actions' && <Actions toast={toast} />}
         {tab === 'logs' && <Logs />}
       </main>
@@ -315,6 +368,7 @@ export default function App() {
           { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
           { id: 'memory', icon: <Brain size={20} />, label: 'Memory' },
           { id: 'files', icon: <FolderOpen size={20} />, label: 'Files' },
+          { id: 'skills', icon: <Boxes size={20} />, label: 'Skills' },
           { id: 'actions', icon: <Zap size={20} />, label: 'Actions' },
           { id: 'logs', icon: <Terminal size={20} />, label: 'Logs' },
         ] as const).map(t => (
