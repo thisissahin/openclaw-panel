@@ -1,77 +1,176 @@
-# VISION.md: The "ClawBots" Platform
+# VISION.md: ClawBots Platform
 
-## 1. The Core Vision
-To build the first **Decentralized AI Agent OS** inside Telegram. 
-
-Unlike ChatGPT (which is a centralized chatbot), "ClawBots" is a platform where users **own** their AI's memory, **install** specialized skills like apps, and **automate** their life via Telegram.
+> Last updated: 2026-02-20 — Vision locked in conversation with Shahin.
 
 ---
 
-## 2. Competitive Advantage (The "Why")
-| Feature | ChatGPT/Claude | **ClawBots (Our Platform)** |
-| :--- | :--- | :--- |
-| **Ownership** | They own your data. | **You** own the Memory files. |
-| **Control** | Black box "brain." | **Live Dashboard** to edit the "Soul." |
-| **Actions** | Mostly just chat. | **Executes tasks** (WhatsApp, Cron, Web). |
-| **Economy** | Fiat subscription. | **TON-native** (Pay-per-token/Skill). |
-| **Platform** | Closed ecosystem. | **Skill Store** (Open for developers). |
+## 1. What We're Building
+
+**ClawBots is an AgentHub.**
+
+Not "here's your chatbot." Not "here's your OpenClaw instance." Those are backend details users don't care about.
+
+ClawBots is the place where:
+- You **discover and install pre-built agents** for real use cases
+- You **extend any agent** with skills and plugins (free or paid, official or community-made)
+- You **build and publish** your own agents and skills
+- You **talk to, observe, and manage** your agents from one place
+
+Think: **App Store meets Hugging Face meets personal AI** — but fully inside Telegram, with TON-native payments.
 
 ---
 
-## 3. The Architecture (How it works)
-- **User Entry:** Telegram Bot + Mini App (The Dashboard).
-- **Payment Layer:** TON Wallet (Connect → Pay TON → Unlock Credits/Skills).
-- **Execution Layer:** Runtime Marketplace — user picks their engine, we run it in Docker.
-- **Plugin Layer:** "Skill Store" powered by ClawHub (One-tap install of new powers, works across all runtimes).
+## 2. The Core Product Loop
 
-## 3a. The "Runtime Marketplace" (Core Differentiator)
-ClawBots is **runtime-agnostic**. We don't lock users into one engine. They choose based on budget and power:
+```
+Discover Agent → Install → Talk to It → Extend with Skills → Automate
+```
 
-| Tier | Runtime | RAM/user | Price |
-|---|---|---|---|
-| **Starter** | NanoBot (Python, ~4k lines) | ~80MB | $3/mo in TON |
-| **Pro** | OpenClaw (Full power) | ~500MB | $15/mo in TON |
-| **Enterprise** | ClawBots Runtime (our own, future) | Optimized | Custom |
-
-- **NanoBot** has built-in Cron, Docker sandboxing (`restrictToWorkspace: true`), ClawHub skills, and multi-channel support. Perfect for 95% of users.
-- **OpenClaw** is for power users who need full shell access, advanced tools, and maximum flexibility.
-- **Our Own Runtime** (Phase 4+): Built specifically for multi-tenancy, optimized for cost at scale.
+Every step is one tap or one message. No docs, no setup, no config files.
 
 ---
 
-## 4. Development Roadmap (The "Serious" Plan)
+## 3. The Main Agent (MVP Foundation)
 
-### Phase 1: Infrastructure & Multi-Tenancy (2-3 Weeks)
-- **Goal:** Move from "One Server, One User" to "One Server, 1,000 Users."
-- **Tasks:**
-    - Build a **Provisioning Script** (Spawns a new Dockerized agent on user signup).
-    - Build a **Master Gateway** to route Telegram messages to the correct user sandbox.
-    - Implement **Token Tracking** per user ID.
+Every new user gets **The Main Agent** automatically on signup.
 
-### Phase 2: The TON Economic Layer (2 Weeks)
-- **Goal:** Enable monetization and "One-Tap" payments.
-- **Tasks:**
-    - Add **TON Connect** to the Panel.
-    - Build the **"Credit Refill"** flow (Pay TON → Update SQL database balance).
-    - Implement **Subscription gating** (Check balance before allowing an AI turn).
+This is not a generic assistant. It is the **platform concierge** — it:
+- Knows the entire ClawBots system
+- Onboards the user through natural conversation
+- Suggests and installs skills based on user needs
+- Teaches the user how everything works
+- Acts as their primary daily assistant
 
-### Phase 3: The Skill Store (2 Weeks)
-- **Goal:** Turn the Panel into a marketplace.
-- **Tasks:**
-    - Create the **"Store" UI** in the Mini App.
-    - Curate 5 **"Starter Skills"** (e.g., WhatsApp Summary, Daily News, Crypto Alert).
-    - Implement **One-Tap Install** (Panel tells Agent to `clawhub install`).
+**The agent is the onboarding UI.** No tutorial screens. No docs. You just talk.
 
-### Phase 4: Beta & Viral Growth (Launch)
-- **Goal:** Get the first 100 paying users.
-- **Tasks:**
-    - **Referral System:** "Invite a friend, get 100k tokens."
-    - **Influencer Kits:** Create specialized "Souls" for famous traders/creators.
-    - **Onboarding Wizard:** A 3-step setup inside the Mini App.
+The Main Agent is the first pre-built agent. More will follow.
 
 ---
 
-## 5. Next Immediate Steps
-1. **Security Audit:** Can we truly "trap" a user in a Docker container?
-2. **Database Choice:** Decide on a simple DB (SQLite/PostgreSQL) to track user balances.
-3. **TON Connect Manifest:** Set up the required metadata to allow wallet connections.
+## 4. Pre-Built Agents (The "Store")
+
+Agents are templates for specific use cases. Users install them with one tap. They can also create their own.
+
+**Launch agents (to be defined):**
+- 🤖 **Main Agent** — Personal assistant + platform guide (default for all users)
+- More to be defined based on market research
+
+Agents are distinct from skills:
+- **Agent** = a full persona with a purpose (e.g., "Trading Assistant")
+- **Skill** = a capability plugin installed into an agent (e.g., "Crypto Price Alerts")
+
+---
+
+## 5. The Skill Store
+
+Skills extend agents. Free or paid. Official or community-built.
+
+Examples:
+- Web search
+- Crypto price alerts
+- Daily news briefing
+- WhatsApp integration
+- Calendar sync
+- Custom cron automations
+
+One-tap install from the Panel or via conversation with the agent.
+
+---
+
+## 6. Competitive Position
+
+| Feature | ChatGPT / Claude | **ClawBots** |
+|---|---|---|
+| Ownership | They own your data | You own your memory files |
+| Customization | System prompt at best | Full Soul + Skills + Agents |
+| Automation | None | Cron, webhooks, multi-channel |
+| Economy | Fiat subscription | TON-native, pay-per-use |
+| Ecosystem | Closed | Open skill marketplace |
+| Entry | Web app | Telegram (native to where people already are) |
+
+---
+
+## 7. Interface Strategy
+
+**MVP: Telegram Mini App only.**
+
+The UI is a Telegram Mini App. Auth via `initData`. Payments via TON Connect. Delivery via Telegram Bot API.
+
+**Future interfaces (architecture supports all of these):**
+- Web / PWA
+- iOS native app
+- Android native app
+
+The Core never changes when we add interfaces. Only adapters are added.
+
+---
+
+## 8. Technical Foundation
+
+The platform runs on two abstraction axes:
+1. **Runtime-agnostic** — NanoBot (Starter), OpenClaw (Pro), more in future
+2. **Interface-agnostic** — Telegram today, web/iOS/Android tomorrow
+
+Users never see the words "NanoBot" or "OpenClaw." They see their agent.
+
+See `ARCHITECTURE.md` for full technical detail.
+
+---
+
+## 9. Roadmap
+
+### Phase 1 — Infrastructure (Current Priority)
+**Goal:** One server → 1,000 users. Nothing user-facing yet.
+
+- [ ] Docker Spawner — spawn/destroy agent containers per user
+- [ ] Master Gateway — route Telegram messages to correct user container
+- [ ] User Registry — SQLite: users, credits, runtime, workspace
+- [ ] Credit Engine — debit tokens per turn, check balance before allowing turn
+- [ ] Provisioning System — auto-spawn on signup, auto-generate Soul
+
+### Phase 2 — The Main Agent & Panel MVP
+**Goal:** First user can sign up, get their Main Agent, talk to it, see it in the Panel.
+
+- [ ] Main Agent template (Soul + onboarding instructions + platform knowledge)
+- [ ] Telegram Mini App Panel v1: My Agents, Memory, Logs tabs
+- [ ] Free trial (50k tokens auto-granted on signup)
+
+### Phase 3 — TON Economic Layer
+**Goal:** Monetization live.
+
+- [ ] TON Connect in Panel
+- [ ] Credit top-up flow (Pay TON → credits added)
+- [ ] Subscription gating (check balance before each turn)
+
+### Phase 4 — Skill Store
+**Goal:** Platform becomes a marketplace.
+
+- [ ] Skill Store UI in Panel
+- [ ] First 5 curated skills (official)
+- [ ] One-tap install from Panel and via agent conversation
+- [ ] Community skill submission pipeline
+
+### Phase 5 — Beta Launch
+**Goal:** First 100 paying users.
+
+- [ ] Referral system ("invite a friend → 100k tokens")
+- [ ] Agent marketplace (browse + install pre-built agents)
+- [ ] Public launch
+
+---
+
+## 10. What We Have Today
+
+| Component | Status |
+|---|---|
+| Architecture docs | ✅ Done |
+| ARCHITECTURE.md (adapter interfaces) | ✅ Done |
+| Panel v2 UI (React, basic) | ✅ Exists but not real |
+| Docker Spawner | 🔄 In progress |
+| Master Gateway | ⬜ Not started |
+| User Registry / DB | ⬜ Not started |
+| Main Agent template | ⬜ Not started |
+| TON integration | ⬜ Not started |
+| Skill Store | ⬜ Not started |
+
+**Honest assessment: infrastructure is Phase 1 and it's not done. That's where we build next.**
