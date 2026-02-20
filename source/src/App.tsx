@@ -128,6 +128,7 @@ function Files({ toast }: { toast: (m: string) => void }) {
   const [context, setContext] = useState<CtxFile[]>([])
   const [chatInput, setChatInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [sentLog, setSentLog] = useState<{ text: string; files: string[]; time: string }[]>([])
 
   const loadDir = useCallback(async (p: string) => {
     setLoading(true)
@@ -176,10 +177,12 @@ function Files({ toast }: { toast: (m: string) => void }) {
   const handleSend = async () => {
     if (!chatInput.trim() && context.length === 0) return
     setSending(true)
+    const snapshot = { text: chatInput, files: context.map(c => c.name.split('/').pop()!), time: new Date().toLocaleTimeString('en', { hour12: false }) }
     try {
       await sendChat(chatInput, context)
       setChatInput('')
-      toast('Sent ✅ — reply coming in Telegram')
+      setSentLog(prev => [...prev.slice(-20), snapshot])
+      toast('Sent ✅')
     } catch (e: any) { toast(`Failed: ${e.message}`) }
     finally { setSending(false) }
   }
@@ -253,6 +256,19 @@ function Files({ toast }: { toast: (m: string) => void }) {
       )}
       {fileViewer}
       {dirListing}
+      {sentLog.length > 0 && (
+        <div className="sent-log">
+          {sentLog.map((s, i) => (
+            <div key={i} className="sent-log-entry">
+              <span className="sent-log-time">{s.time}</span>
+              <div className="sent-log-body">
+                {s.files.length > 0 && <div className="sent-log-files">{s.files.map(f => `📎 ${f}`).join(' ')}</div>}
+                {s.text && <div className="sent-log-text">{s.text}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="chat-input-bar">
         <textarea
           className="chat-textarea"

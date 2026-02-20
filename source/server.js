@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile } from 'fs';
-import { execSync, spawnSync } from 'child_process';
+import { execSync, spawnSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createServer } from 'http';
@@ -216,15 +216,19 @@ app.post('/api/chat/send', (req, res) => {
 
     if (!fullMessage.trim()) return res.status(400).json({ error: 'Empty message' });
 
-    const result = spawnSync(
+    // Fire and forget — reply comes back via Telegram
+    const proc = spawn(
       'openclaw',
-      ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram'],
-      { timeout: 30000, encoding: 'utf-8' }
+      ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram', '--agent', 'main'],
+      {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        env: { ...process.env, HOME: '/root', PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
+      }
     );
+    proc.unref();
 
-    if (result.error) throw result.error;
-
-    res.json({ ok: true });
+    res.json({ ok: true, queued: true });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
   }
