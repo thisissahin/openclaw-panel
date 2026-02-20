@@ -155,6 +155,40 @@ app.get('/api/user/profile', (req, res) => {
   res.json({ ok: true, user });
 });
 
+// ─── Agent Actions ───────────────────────────────────────────
+app.post('/api/agent/start', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
+  try {
+    const result = Provisioning.spawnRuntime(userId);
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.post('/api/agent/stop', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
+  try {
+    const result = Provisioning.killRuntime(userId);
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.get('/api/agent/status', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
+  try {
+    const status = Provisioning.getStatus(userId);
+    res.json({ ok: true, status });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
 // ── Actions ───────────────────────────────────────────────────
 const SAFE_ACTIONS = {
   restart: () => execSync('openclaw gateway restart', { timeout: 10000 }).toString(),
