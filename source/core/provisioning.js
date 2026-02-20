@@ -10,7 +10,7 @@ import { UserModel } from '../models/User.js';
 export class Provisioning {
   static ROOT_WORKSPACES = '/root/.openclaw/workspaces';
   static SOUL_TEMPLATE = '/root/.openclaw/templates/starter/SOUL.md';
-  static IMAGE_NAME = 'openclaw-node-runtime:latest'; // Custom image with OpenClaw installed
+  static IMAGE_NAME = 'openclaw-node-runtime:latest';
 
   /**
    * Set up a user's isolated workspace.
@@ -54,6 +54,9 @@ export class Provisioning {
       execSync(`docker rm -f ${containerName}`, { stdio: 'ignore' });
     } catch (e) {}
 
+    // Ensure image exists (or pull if needed)
+    // For now, assume openclaw-node-runtime:latest is pre-built or pulled
+    
     // Spawn new container with resource limits (128MB RAM, 0.5 CPU)
     // -v: Mount the user's workspace
     // --restart: Auto-restart unless stopped
@@ -72,6 +75,7 @@ export class Provisioning {
     console.log(`🐳 Spawning container ${containerName} for user ${userId}`);
     const containerId = execSync(dockerCmd).toString().trim();
 
+    // Update status in DB if needed (optional, status is usually derived)
     return { containerId, name: containerName, path: userPath };
   }
 

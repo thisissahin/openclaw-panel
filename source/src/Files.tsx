@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { X, Save, Edit3, Paperclip, Send } from 'lucide-react'
-import { listFiles, readFile, writeFile, injectContext } from './api'
+import { listFiles, readFile, writeFile, sendChat } from './api'
 
 type CtxFile = { name: string; content: string }
 
@@ -12,7 +12,8 @@ export default function Files({ toast }: { toast: (m: string) => void }) {
   const [draft, setDraft] = useState('')
   const [loading, setLoading] = useState(true)
   const [context, setContext] = useState<CtxFile[]>([])
-  const [injecting, setInjecting] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [sending, setSending] = useState(false)
 
   const loadDir = useCallback(async (p: string) => {
     setLoading(true)
@@ -52,21 +53,21 @@ export default function Files({ toast }: { toast: (m: string) => void }) {
     try {
       const text = content ?? (await readFile(name)).content ?? ''
       setContext(prev => [...prev, { name, content: text }])
-      toast(`📎 ${name.split('/').pop()}`)
     } catch (e: any) { toast(`Error: ${e.message}`) }
   }
 
   const removeFromContext = (name: string) => setContext(prev => prev.filter(c => c.name !== name))
 
-  const handleInject = async () => {
+  const handleSend = async () => {
     if (context.length === 0) return
-    setInjecting(true)
+    setSending(true)
     try {
-      await injectContext(context)
+      await sendChat(chatInput, context)
+      toast('Sent ✅ — reply coming in Telegram')
+      setChatInput('')
       setContext([])
-      toast('Injected 📎')
     } catch (e: any) { toast(`Failed: ${e.message}`) }
-    finally { setInjecting(false) }
+    finally { setSending(false) }
   }
 
   const inContext = (name: string) => !!context.find(c => c.name === name)
@@ -139,10 +140,15 @@ export default function Files({ toast }: { toast: (m: string) => void }) {
       {fileViewer}
       {dirListing}
       <div className="chat-input-bar">
-        <div className="context-status">
-            {context.length > 0 ? `${context.length} file${context.length > 1 ? 's' : ''} staged` : 'Select files to inject into context…'}
-        </div>
-        <button className="chat-send-btn" onClick={handleInject} disabled={injecting || context.length === 0} title="Inject into Context">
+        <textarea
+          className="chat-textarea"
+          value={chatInput}
+          onChange={e => setChatInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+          placeholder={context.length > 0 ? `Ask about ${context.length} file${context.length > 1 ? 's' : ''}…` : 'Select files to ask about…'}
+          rows={1}
+        />
+        <button className="chat-send-btn" onClick={handleSend} disabled={sending || context.length === 0} title="Send to Agent">
           <Send size={16} />
         </button>
       </div>

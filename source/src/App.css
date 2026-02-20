@@ -33,27 +33,36 @@ body {
 .app-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center; /* Center the title */
   padding: 0 16px;
-  height: var(--header-h);
+  padding-top: env(safe-area-inset-top);
+  height: calc(var(--header-h) + env(safe-area-inset-top));
   background: var(--secondary-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative; /* For absolute positioning of children if needed */
 }
-.app-title { font-weight: 600; font-size: 16px; }
+.app-title { 
+  font-weight: 600; 
+  font-size: 16px;
+  text-align: center;
+}
+.header-right {
+  position: absolute;
+  right: 12px;
+  bottom: 8px; /* Adjusted for centered look within header height */
+}
 
 /* Main content */
 .app-main {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 8px;
   display: flex;
   flex-direction: column;
 }
 .app-main.no-scroll {
   overflow: hidden;
-  padding-bottom: 0;
 }
 
 .tab-content {
@@ -67,7 +76,10 @@ body {
 /* Bottom nav */
 .bottom-nav {
   display: flex;
-  height: var(--nav-h);
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background: var(--secondary-bg);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -203,7 +215,7 @@ body {
   color: var(--text);
   border: none;
   font-family: 'Menlo', 'Monaco', monospace;
-  font-size: 12px;
+  font-size: 16px; /* Bumping to 16px to prevent iOS auto-zoom */
   line-height: 1.5;
   resize: none;
   outline: none;
@@ -281,7 +293,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 16px; /* Bumping to 16px to prevent iOS auto-zoom */
   outline: none;
 }
 
@@ -553,8 +565,25 @@ body {
 .chat-send-btn:active { transform: scale(0.92); }
 .chat-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* Chat input textarea */
+.chat-textarea {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px; /* Prevents iOS auto-zoom on focus */
+  resize: none;
+  outline: none;
+  line-height: 1.4;
+  max-height: 120px;
+}
+.chat-textarea::placeholder { color: var(--hint); }
+
 /* Remove old chat log styles */
-.chat-log, .chat-bubble-row, .chat-bubble, .chat-attachment, .chat-bubble-text, .chat-bubble-time, .chat-textarea {
+.chat-log, .chat-bubble-row, .chat-bubble, .chat-attachment, .chat-bubble-text, .chat-bubble-time {
   display: none;
 }
 

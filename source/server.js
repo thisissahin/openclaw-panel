@@ -239,46 +239,6 @@ app.post('/api/chat/send', (req, res) => {
   }
 });
 
-// ── Silent Context Injection ──────────────────────────────────
-app.post(['/api/chat/inject', '/api/context/inject'], async (req, res) => {
-  try {
-    const { contextFiles } = req.body;
-    const agentId = req.headers['x-agent-id'] || 'main';
-
-    if (!contextFiles || contextFiles.length === 0) return res.status(400).json({ error: 'No files to inject' });
-
-    let fileContent = '';
-    for (const file of contextFiles) {
-      fileContent += `[File: ${file.name}]\n${file.content}\n\n---\n\n`;
-    }
-
-    const sessionFile = getActiveSessionFile(agentId);
-    if (sessionFile) {
-        const entry = {
-            timestamp: new Date().toISOString(),
-            message: {
-                role: 'user',
-                content: [{ type: 'text', text: `📎 *Context Injected from Panel*\n\n${fileContent}` }]
-            }
-        };
-        const fs = await import('fs');
-        fs.appendFileSync(sessionFile, JSON.stringify(entry) + '\n');
-    }
-
-    // Echo to Telegram passive message
-    const echoMessage = `📎 *Context Injected* | Files: ${contextFiles.map(f => f.name).join(', ')}`;
-    spawn('openclaw', ['message', 'send', '--target', '858433700', '--message', echoMessage, '--channel', 'telegram'], {
-        detached: true,
-        stdio: ['ignore', 'ignore', 'ignore'],
-        env: { ...process.env, HOME: '/root', PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
-    }).unref();
-
-    res.json({ ok: true, injected: true });
-  } catch (e) {
-    res.json({ ok: false, error: String(e) });
-  }
-});
-
 // ── Actions ───────────────────────────────────────────────────
 const SAFE_ACTIONS = {
   restart: () => execSync('openclaw gateway restart', { timeout: 10000 }).toString(),

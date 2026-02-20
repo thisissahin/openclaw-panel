@@ -339,6 +339,11 @@ export default function App() {
       tg.ready(); 
       tg.expand();
       
+      // Attempt to request fullscreen if supported (Bot API 8.0+)
+      if (tg.requestFullscreen) {
+        tg.requestFullscreen();
+      }
+      
       if (tg.initDataUnsafe?.user) {
         authUser(tg.initDataUnsafe.user)
           .then(r => {
@@ -353,7 +358,9 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <span className="app-title">🌙 OpenClaw Panel</span>
-        <button className="icon-btn" onClick={() => setShowSettings(true)}><Settings size={18} /></button>
+        <div className="header-right">
+          <button className="icon-btn" onClick={() => setShowSettings(true)}><Settings size={18} /></button>
+        </div>
       </header>
       <main className={`app-main ${(tab === 'logs' || tab === 'files' || tab === 'skills') ? 'no-scroll' : ''}`}>
         {tab === 'dashboard' && <Dashboard />}
