@@ -217,16 +217,21 @@ app.post('/api/chat/send', (req, res) => {
     if (!fullMessage.trim()) return res.status(400).json({ error: 'Empty message' });
 
     // Fire and forget — reply comes back via Telegram
-    const proc = spawn(
-      'openclaw',
-      ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram', '--agent', 'main'],
-      {
+    const spawnArgs = ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram', '--agent', 'main'];
+    const proc = spawn('openclaw', spawnArgs, {
         detached: true,
         stdio: ['ignore', 'ignore', 'ignore'],
         env: { ...process.env, HOME: '/root', PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
-      }
-    );
+    });
     proc.unref();
+
+    // Echo the sent message to Telegram immediately so the user sees what was dispatched
+    const echoMessage = `📤 *Panel Dispatch*\n${contextFiles?.length ? `📎 Files: ${contextFiles.map(f => f.name).join(', ')}\n` : ''}\n${message || ''}`;
+    spawn('openclaw', ['message', 'send', '--target', '858433700', '--message', echoMessage, '--channel', 'telegram'], {
+        detached: true,
+        stdio: ['ignore', 'ignore', 'ignore'],
+        env: { ...process.env, HOME: '/root', PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
+    }).unref();
 
     res.json({ ok: true, queued: true });
   } catch (e) {

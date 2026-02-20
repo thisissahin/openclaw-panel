@@ -127,8 +127,7 @@ function Files({ toast }: { toast: (m: string) => void }) {
   const [loading, setLoading] = useState(true)
   const [context, setContext] = useState<CtxFile[]>([])
   const [chatInput, setChatInput] = useState('')
-  const [sending, setSending] = useState(false)
-  const [sentLog, setSentLog] = useState<{ text: string; files: string[]; time: string }[]>([])
+  const [sending, setSending] = useState(false);
 
   const loadDir = useCallback(async (p: string) => {
     setLoading(true)
@@ -177,11 +176,9 @@ function Files({ toast }: { toast: (m: string) => void }) {
   const handleSend = async () => {
     if (!chatInput.trim() && context.length === 0) return
     setSending(true)
-    const snapshot = { text: chatInput, files: context.map(c => c.name.split('/').pop()!), time: new Date().toLocaleTimeString('en', { hour12: false }) }
     try {
       await sendChat(chatInput, context)
       setChatInput('')
-      setSentLog(prev => [...prev.slice(-20), snapshot])
       toast('Sent ✅')
     } catch (e: any) { toast(`Failed: ${e.message}`) }
     finally { setSending(false) }
@@ -256,21 +253,6 @@ function Files({ toast }: { toast: (m: string) => void }) {
       )}
       {fileViewer}
       {dirListing}
-      {sentLog.length > 0 && (
-        <div className="chat-log">
-          {sentLog.map((s, i) => (
-            <div key={i} className="chat-bubble-row">
-              <div className="chat-bubble">
-                {s.files.map(f => (
-                  <div key={f} className="chat-attachment">📎 {f}</div>
-                ))}
-                {s.text && <div className="chat-bubble-text">{s.text}</div>}
-                <div className="chat-bubble-time">{s.time}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
       <div className="chat-input-bar">
         <textarea
           className="chat-textarea"
