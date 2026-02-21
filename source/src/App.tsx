@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, authUser, getSkills, toggleSkill } from './api'
+import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill } from './api'
 import './App.css'
 
 type Tab = 'dashboard' | 'memory' | 'files' | 'skills' | 'actions' | 'logs'
@@ -167,7 +167,6 @@ function Skills({ toast }: { toast: (m: string) => void }) {
     </div>
   )
 }
-
 // ─── Actions ─────────────────────────────────────────────────
 function Actions({ toast }: { toast: (m: string) => void }) {
   const [running, setRunning] = useState<string | null>(null)
@@ -342,14 +341,6 @@ export default function App() {
       // Attempt to request fullscreen if supported (Bot API 8.0+)
       if (tg.requestFullscreen) {
         tg.requestFullscreen();
-      }
-      
-      if (tg.initDataUnsafe?.user) {
-        authUser(tg.initDataUnsafe.user)
-          .then(r => {
-            if (r.ok) localStorage.setItem('userId', r.user.telegram_id);
-          })
-          .catch(console.error);
       }
     }
   }, [])

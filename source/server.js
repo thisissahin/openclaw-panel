@@ -1,20 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import { readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile } from 'fs';
-import { execSync, spawnSync, spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
-import db from './db.js';
-import { UserModel } from './models/User.js';
-import { Provisioning } from './core/provisioning.js';
 import { SkillManager } from './core/skill-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TOKEN = process.env.PANEL_TOKEN || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae';
 const PORT = 3001;
-const WORKSPACE = '/root/.openclaw/workspace';
 
 const app = express();
 app.use(cors());
@@ -124,66 +120,6 @@ app.get('/api/files/read', (req, res) => {
     if (!rel) return res.status(400).json({ error: 'No path' });
     const content = readFileSync(`${WORKSPACE}/${rel}`, 'utf-8');
     res.json({ ok: true, content: content.slice(0, 50000) });
-  } catch (e) {
-    res.json({ ok: false, error: String(e) });
-  }
-});
-
-// ─── User Management / Auth ───────────────────────────────────
-app.post('/api/auth', (req, res) => {
-  const { userData } = req.body;
-  if (!userData?.id) return res.status(400).json({ error: 'Invalid userData' });
-
-  const userId = String(userData.id);
-  const username = userData.username || 'unknown';
-
-  let user = UserModel.get(userId);
-  if (!user) {
-    user = UserModel.create(userId, username);
-    
-    // Auto-provision workspace and soul
-    Provisioning.setupWorkspace(userId, username);
-  }
-
-  res.json({ ok: true, user });
-});
-
-app.get('/api/user/profile', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
-  const user = UserModel.get(userId);
-  res.json({ ok: true, user });
-});
-
-// ─── Agent Actions ───────────────────────────────────────────
-app.post('/api/agent/start', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
-  try {
-    const result = Provisioning.spawnRuntime(userId);
-    res.json({ ok: true, result });
-  } catch (e) {
-    res.json({ ok: false, error: String(e) });
-  }
-});
-
-app.post('/api/agent/stop', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
-  try {
-    const result = Provisioning.killRuntime(userId);
-    res.json({ ok: true, result });
-  } catch (e) {
-    res.json({ ok: false, error: String(e) });
-  }
-});
-
-app.get('/api/agent/status', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  if (!userId) return res.status(400).json({ error: 'Missing userId header' });
-  try {
-    const status = Provisioning.getStatus(userId);
-    res.json({ ok: true, status });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
   }
