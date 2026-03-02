@@ -143,23 +143,93 @@ function UsagePanel({ agentId }: { agentId: string }) {
   if (loading) return <p style={{ color: '#666', fontSize: '13px' }}>Loading usage...</p>
   if (!data) return <p style={{ color: '#666', fontSize: '13px' }}>Usage data unavailable.</p>
 
-  const status = data.status || {}
-  const cost = data.cost || {}
-  const agentCost = cost[agentId] || cost['total'] || null
+  const totals = data.cost?.totals || {}
+  const daily: any[] = data.cost?.daily || []
+  const today = daily[daily.length - 1] || {}
+  const providers: any[] = data.status?.providers || []
+
+  const fmtCost = (n: number) => n > 0 ? `$${n.toFixed(3)}` : '$0.00'
+  const fmtM = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : fmt(n)
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-      {[
-        { label: 'Total Tokens', value: fmt(status.totalTokens || 0) },
-        { label: 'Est. Cost', value: agentCost ? `$${Number(agentCost).toFixed(4)}` : '—' },
-        { label: 'Sessions', value: String(status.sessionCount || '—') },
-        { label: 'Compactions', value: String(status.compactionCount || '—') },
-      ].map(({ label, value }) => (
-        <div key={label} style={{ background: '#2a2a2a', borderRadius: '8px', padding: '10px 12px' }}>
-          <div style={{ color: '#666', fontSize: '11px', marginBottom: '4px' }}>{label}</div>
-          <div style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>{value}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      {/* Totals */}
+      <div>
+        <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>All Time</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          {[
+            { label: 'Total Tokens', value: fmtM(totals.totalTokens || 0) },
+            { label: 'Total Cost', value: fmtCost(totals.totalCost || 0) },
+            { label: 'Input Cost', value: fmtCost(totals.inputCost || 0) },
+            { label: 'Output Cost', value: fmtCost(totals.outputCost || 0) },
+          ].map(({ label, value }) => (
+            <div key={label} style={{ background: '#2a2a2a', borderRadius: '8px', padding: '10px 12px' }}>
+              <div style={{ color: '#666', fontSize: '11px', marginBottom: '4px' }}>{label}</div>
+              <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{value}</div>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
+
+      {/* Today */}
+      {today.date && (
+        <div>
+          <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today ({today.date})</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            {[
+              { label: 'Tokens', value: fmtM(today.totalTokens || 0) },
+              { label: 'Cost', value: fmtCost(today.totalCost || 0) },
+            ].map(({ label, value }) => (
+              <div key={label} style={{ background: '#2a2a2a', borderRadius: '8px', padding: '10px 12px' }}>
+                <div style={{ color: '#666', fontSize: '11px', marginBottom: '4px' }}>{label}</div>
+                <div style={{ color: '#fff', fontSize: '16px', fontWeight: 700 }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Daily sparkline (last 7 days) */}
+      {daily.length > 1 && (
+        <div>
+          <div style={{ color: '#888', fontSize: '11px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last {Math.min(daily.length, 7)} Days</div>
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'flex-end', height: '48px', background: '#2a2a2a', borderRadius: '8px', padding: '8px' }}>
+            {daily.slice(-7).map((d: any, i: number) => {
+              const maxCost = Math.max(...daily.slice(-7).map((x: any) => x.totalCost || 0), 0.001)
+              const h = Math.max(4, ((d.totalCost || 0) / maxCost) * 32)
+              return (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                  <div style={{ width: '100%', height: `${h}px`, background: d.totalCost > 0 ? '#4a9eff' : '#333', borderRadius: '3px 3px 0 0' }} />
+                  <div style={{ color: '#555', fontSize: '9px' }}>{d.date?.slice(5)}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Provider rate limits */}
+      {providers.some(p => p.windows?.length > 0) && (
+        <div>
+          <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rate Limits</div>
+          {providers.filter(p => p.windows?.length > 0).map((p: any) => (
+            <div key={p.provider} style={{ background: '#2a2a2a', borderRadius: '8px', padding: '10px 12px', marginBottom: '6px' }}>
+              <div style={{ color: '#fff', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>{p.displayName}</div>
+              {p.windows.map((w: any, i: number) => (
+                <div key={i} style={{ marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                    <span style={{ color: '#888', fontSize: '11px' }}>{w.label}</span>
+                    <span style={{ color: w.usedPercent > 80 ? '#ef4444' : '#888', fontSize: '11px' }}>{w.usedPercent}%</span>
+                  </div>
+                  <div style={{ height: '4px', background: '#333', borderRadius: '2px' }}>
+                    <div style={{ height: '100%', width: `${w.usedPercent}%`, background: w.usedPercent > 80 ? '#ef4444' : '#4a9eff', borderRadius: '2px' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
