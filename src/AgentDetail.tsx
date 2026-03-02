@@ -240,20 +240,31 @@ function UsagePanel({ agentId }: { agentId: string }) {
       })()}
 
       {/* Provider rate limits */}
-      {providers.some(p => p.windows?.length > 0) && (
+      {providers.length > 0 && (
         <div>
-          <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rate Limits</div>
-          {providers.filter(p => p.windows?.length > 0).map((p: any) => (
+          <div style={{ color: '#888', fontSize: '11px', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Providers</div>
+          {providers.map((p: any) => (
             <div key={p.provider} style={{ background: '#2a2a2a', borderRadius: '8px', padding: '10px 12px', marginBottom: '6px' }}>
-              <div style={{ color: '#fff', fontSize: '12px', fontWeight: 600, marginBottom: '6px' }}>{p.displayName}</div>
-              {p.windows.map((w: any, i: number) => (
-                <div key={i} style={{ marginBottom: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: p.windows?.length > 0 ? '8px' : '0' }}>
+                <div style={{ color: '#fff', fontSize: '12px', fontWeight: 600 }}>{p.displayName}</div>
+                {p.error
+                  ? <span style={{ color: '#f59e0b', fontSize: '10px', background: '#f59e0b11', border: '1px solid #f59e0b33', borderRadius: '4px', padding: '2px 6px' }}>⚠ Auth error</span>
+                  : p.windows?.length === 0
+                    ? <span style={{ color: '#22c55e', fontSize: '10px' }}>✓ OK</span>
+                    : null
+                }
+              </div>
+              {p.error && (
+                <div style={{ color: '#f59e0b88', fontSize: '10px', marginBottom: p.windows?.length > 0 ? '8px' : '0', lineHeight: 1.4 }}>{p.error}</div>
+              )}
+              {p.windows?.map((w: any, i: number) => (
+                <div key={i} style={{ marginBottom: '6px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
                     <span style={{ color: '#888', fontSize: '11px' }}>{w.label}</span>
-                    <span style={{ color: w.usedPercent > 80 ? '#ef4444' : '#888', fontSize: '11px' }}>{w.usedPercent}%</span>
+                    <span style={{ color: w.usedPercent > 80 ? '#ef4444' : w.usedPercent > 50 ? '#f59e0b' : '#888', fontSize: '11px' }}>{w.usedPercent}%</span>
                   </div>
                   <div style={{ height: '4px', background: '#333', borderRadius: '2px' }}>
-                    <div style={{ height: '100%', width: `${w.usedPercent}%`, background: w.usedPercent > 80 ? '#ef4444' : '#4a9eff', borderRadius: '2px' }} />
+                    <div style={{ height: '100%', width: `${w.usedPercent}%`, background: w.usedPercent > 80 ? '#ef4444' : w.usedPercent > 50 ? '#f59e0b' : '#4a9eff', borderRadius: '2px', transition: 'width 0.3s ease' }} />
                   </div>
                 </div>
               ))}
