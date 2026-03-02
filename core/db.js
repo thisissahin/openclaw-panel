@@ -37,7 +37,7 @@ db.exec(`
 // ── Terminal tabs ─────────────────────────────────────────────
 export const tabs = {
   list: (agentId) =>
-    db.prepare('SELECT * FROM terminal_tabs WHERE agent_id = ? ORDER BY last_used DESC').all(agentId),
+    db.prepare('SELECT * FROM terminal_tabs WHERE agent_id = ? ORDER BY created_at ASC').all(agentId),
 
   get: (id) =>
     db.prepare('SELECT * FROM terminal_tabs WHERE id = ?').get(id),

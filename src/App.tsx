@@ -483,12 +483,22 @@ export default function App() {
           <button className="icon-btn" onClick={handleLogout} title="Logout"><LogOut size={18} /></button>
         </div>
       </header>
-      <main className={`app-main ${(tab === 'terminal' || tab === 'files' || tab === 'skills') ? 'no-scroll' : ''}`}>
-        {tab === 'dashboard' && <Dashboard />}
-        {tab === 'files' && <Files toast={toast} />}
-        {tab === 'skills' && <Skills toast={toast} />}
-        {tab === 'actions' && <Actions toast={toast} />}
-        {tab === 'terminal' && <TerminalTabs />}
+      <main className="app-main no-scroll" style={{ position: 'relative' }}>
+        <div style={{ display: tab === 'dashboard' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
+          <Dashboard />
+        </div>
+        <div style={{ display: tab === 'files' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+          <Files toast={toast} />
+        </div>
+        <div style={{ display: tab === 'skills' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+          <Skills toast={toast} />
+        </div>
+        <div style={{ display: tab === 'actions' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
+          <Actions toast={toast} />
+        </div>
+        <div style={{ display: tab === 'terminal' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+          <TerminalTabs />
+        </div>
       </main>
       <nav className="bottom-nav">
         {([
