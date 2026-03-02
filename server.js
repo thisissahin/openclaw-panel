@@ -287,6 +287,62 @@ app.post('/api/action', (req, res) => {
   }
 });
 
+// ── OpenClaw Config ───────────────────────────────────────────
+const CONFIG_PATH = join(OPENCLAW_HOME, 'openclaw.json');
+
+function readConfig() {
+  return JSON.parse(readFileSync(CONFIG_PATH, 'utf-8'));
+}
+
+function writeConfig(cfg) {
+  // Backup first
+  writeFileSync(CONFIG_PATH + '.bak', JSON.stringify(readConfig(), null, 4), 'utf-8');
+  writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 4), 'utf-8');
+}
+
+app.get('/api/config', (req, res) => {
+  try {
+    res.json({ ok: true, config: readConfig() });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.patch('/api/config', (req, res) => {
+  try {
+    const cfg = readConfig();
+    const { path: keyPath, value } = req.body;
+    if (!keyPath) return res.status(400).json({ error: 'path required' });
+
+    // Walk and set nested key e.g. "agents.defaults.model.primary"
+    const keys = keyPath.split('.');
+    let obj = cfg;
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (obj[keys[i]] === undefined) obj[keys[i]] = {};
+      obj = obj[keys[i]];
+    }
+    obj[keys[keys.length - 1]] = value;
+
+    writeConfig(cfg);
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.post('/api/config/restart', (req, res) => {
+  try {
+    const proc = spawn('openclaw', ['gateway', 'restart'], {
+      detached: true, stdio: 'ignore',
+      env: { ...process.env, HOME: os.homedir() }
+    });
+    proc.unref();
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
 // ── Skills Manager ────────────────────────────────────────────
 app.get('/api/skills', (req, res) => {
   try {

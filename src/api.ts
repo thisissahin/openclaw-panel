@@ -57,6 +57,11 @@ export const runAction = (action: string) => req('/api/action', 'POST', { action
 export const getSkills = () => req('/api/skills');
 export const toggleSkill = (name: string, enabled: boolean) => req('/api/skills/toggle', 'POST', { name, enabled });
 
+// OpenClaw config
+export const getConfig = () => req('/api/config');
+export const patchConfig = (path: string, value: unknown) => req('/api/config', 'PATCH', { path, value });
+export const restartGateway = () => req('/api/config/restart', 'POST');
+
 // Terminal tabs (DB-backed)
 export const getTabs = () => req('/api/tabs');
 export const saveTab = (id: string, name: string) => req('/api/tabs', 'POST', { id, name });

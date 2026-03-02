@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LayoutDashboard, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes, LogOut, ScrollText } from 'lucide-react'
+import { LayoutDashboard, FolderOpen, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Boxes, LogOut, ScrollText, Plus, ChevronDown, RotateCcw, Zap } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab } from './api'
+import { getAgents, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab, getConfig, patchConfig, restartGateway } from './api'
 import './App.css'
 
-type Tab = 'dashboard' | 'files' | 'skills' | 'actions' | 'terminal'
+type Tab = 'dashboard' | 'files' | 'skills' | 'terminal' | 'settings'
 
 // ─── Login ───────────────────────────────────────────────────
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
@@ -179,29 +179,95 @@ function Skills({ toast }: { toast: (m: string) => void }) {
     </div>
   )
 }
-// ─── Actions ─────────────────────────────────────────────────
-function Actions({ toast }: { toast: (m: string) => void }) {
-  const [running, setRunning] = useState<string | null>(null)
-  const [output, setOutput] = useState<{ label: string; text: string } | null>(null)
+// ─── Settings ─────────────────────────────────────────────────
+const KNOWN_MODELS = [
+  'google-gemini-cli/gemini-3-flash-preview',
+  'google-gemini-cli/gemini-3.1-pro-preview',
+  'anthropic/claude-sonnet-4-6',
+  'anthropic/claude-opus-4-5',
+  'kimi-coding/k2p5',
+  'openai/gpt-4o',
+  'openai/gpt-5.3-codex',
+]
 
-  const run = async (label: string, action: string) => {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: '24px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--hint)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px', padding: '0 16px' }}>{title}</div>
+      <div style={{ background: 'var(--secondary-bg)', borderRadius: '12px', overflow: 'hidden', margin: '0 12px' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, hint, children, last }: { label: string; hint?: string; children: React.ReactNode; last?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: last ? 'none' : '1px solid var(--border)', gap: '12px' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '14px', color: 'var(--text)' }}>{label}</div>
+        {hint && <div style={{ fontSize: '11px', color: 'var(--hint)', marginTop: '2px' }}>{hint}</div>}
+      </div>
+      <div style={{ flexShrink: 0 }}>{children}</div>
+    </div>
+  )
+}
+
+function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div onClick={() => onChange(!value)} style={{ width: '44px', height: '26px', borderRadius: '13px', background: value ? 'var(--btn, #4c8bf5)' : 'var(--border)', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', flexShrink: 0 }}>
+      <div style={{ position: 'absolute', top: '3px', left: value ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+    </div>
+  )
+}
+
+function ModelSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ background: 'var(--secondary-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', maxWidth: '180px' }}>
+      {KNOWN_MODELS.map(m => <option key={m} value={m}>{m.split('/')[1]}</option>)}
+      {!KNOWN_MODELS.includes(value) && <option value={value}>{value.split('/')[1]}</option>}
+    </select>
+  )
+}
+
+function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout: () => void }) {
+  const [cfg, setCfg] = useState<any>(null)
+  const [output, setOutput] = useState<{ label: string; text: string } | null>(null)
+  const [running, setRunning] = useState<string | null>(null)
+  const [panelUrl, setPanelUrl] = useState(localStorage.getItem('gatewayUrl') || '')
+  const [panelToken, setPanelToken] = useState(localStorage.getItem('token') || '')
+
+  useEffect(() => {
+    getConfig().then(r => { if (r.ok) setCfg(r.config) }).catch(() => {})
+  }, [])
+
+  const patch = async (path: string, value: unknown, label?: string) => {
+    try {
+      const r = await patchConfig(path, value)
+      if (r.ok) {
+        setCfg((prev: any) => {
+          const next = JSON.parse(JSON.stringify(prev))
+          const keys = path.split('.')
+          let obj = next
+          for (let i = 0; i < keys.length - 1; i++) obj = obj[keys[i]]
+          obj[keys[keys.length - 1]] = value
+          return next
+        })
+        toast(`${label || path} updated ✅`)
+      } else toast(`Failed: ${r.error}`)
+    } catch (e: any) { toast(`Error: ${e.message}`) }
+  }
+
+  const runAction = async (label: string, action: string) => {
     setRunning(label)
     try {
-      const r = await runAction(action)
+      const r = await import('./api').then(m => m.runAction(action))
       if (r.output) setOutput({ label, text: r.output })
       else toast(`${label}: ${r.ok ? 'Done ✅' : r.error}`)
     } catch (e: any) { toast(`${label} failed: ${e.message}`) }
     finally { setRunning(null) }
   }
-
-  const actions = [
-    { label: 'Restart Gateway', emoji: '🔄', action: 'restart' },
-    { label: 'Update OpenClaw', emoji: '⬆️', action: 'update' },
-    { label: 'Gateway Status', emoji: '🔌', action: 'status' },
-    { label: 'Tunnel Status', emoji: '🌐', action: 'tunnel' },
-    { label: 'Disk Usage', emoji: '💾', action: 'df' },
-    { label: 'Memory Usage', emoji: '🧠', action: 'free' },
-  ]
 
   if (output) return (
     <div className="file-view">
@@ -213,17 +279,122 @@ function Actions({ toast }: { toast: (m: string) => void }) {
     </div>
   )
 
+  const defaults = cfg?.agents?.defaults
+  const tg = cfg?.channels?.telegram
+
   return (
-    <div className="tab-content">
-      <div className="actions-grid">
-        {actions.map(a => (
-          <button key={a.label} className={`action-btn ${running === a.label ? 'running' : ''}`}
-            onClick={() => run(a.label, a.action)} disabled={!!running}>
-            <span className="action-emoji">{a.emoji}</span>
-            <span className="action-label">{running === a.label ? '⏳' : a.label}</span>
-          </button>
+    <div style={{ overflowY: 'auto', height: '100%', paddingTop: '12px', paddingBottom: '32px' }}>
+
+      {/* Models */}
+      {defaults && (
+        <Section title="Model">
+          <Row label="Primary Model" hint="Default model for all agents">
+            <ModelSelect value={defaults.model?.primary || ''} onChange={v => patch('agents.defaults.model.primary', v, 'Primary model')} />
+          </Row>
+          <Row label="Context Pruning" hint="How to manage context window" last>
+            <select value={defaults.contextPruning?.mode || 'cache-ttl'}
+              onChange={e => patch('agents.defaults.contextPruning.mode', e.target.value, 'Context pruning')}
+              style={{ background: 'var(--secondary-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px' }}>
+              <option value="cache-ttl">Cache TTL</option>
+              <option value="aggressive">Aggressive</option>
+              <option value="none">None</option>
+            </select>
+          </Row>
+        </Section>
+      )}
+
+      {/* Memory */}
+      {defaults?.memorySearch && (
+        <Section title="Memory">
+          <Row label="Memory Search" hint="Semantic search across memory files">
+            <Toggle value={defaults.memorySearch.enabled} onChange={v => patch('agents.defaults.memorySearch.enabled', v, 'Memory search')} />
+          </Row>
+          <Row label="Sync on Start" hint="Index memory when session begins">
+            <Toggle value={defaults.memorySearch.sync?.onSessionStart ?? true} onChange={v => patch('agents.defaults.memorySearch.sync.onSessionStart', v, 'Sync on start')} />
+          </Row>
+          <Row label="Heartbeat" hint="Periodic check interval" last>
+            <select value={defaults.heartbeat?.every || '1h'}
+              onChange={e => patch('agents.defaults.heartbeat.every', e.target.value, 'Heartbeat')}
+              style={{ background: 'var(--secondary-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px' }}>
+              <option value="30m">30 minutes</option>
+              <option value="1h">1 hour</option>
+              <option value="2h">2 hours</option>
+              <option value="6h">6 hours</option>
+              <option value="24h">24 hours</option>
+            </select>
+          </Row>
+        </Section>
+      )}
+
+      {/* Telegram */}
+      {tg && (
+        <Section title="Telegram">
+          <Row label="Streaming" hint="How messages are sent">
+            <select value={tg.streaming || 'partial'}
+              onChange={e => patch('channels.telegram.streaming', e.target.value, 'Streaming')}
+              style={{ background: 'var(--secondary-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px' }}>
+              <option value="partial">Partial (live updates)</option>
+              <option value="full">Full (send when done)</option>
+              <option value="off">Off</option>
+            </select>
+          </Row>
+          <Row label="DM Policy" hint="Who can send direct messages" last>
+            <select value={tg.dmPolicy || 'allowlist'}
+              onChange={e => patch('channels.telegram.dmPolicy', e.target.value, 'DM policy')}
+              style={{ background: 'var(--secondary-bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px' }}>
+              <option value="allowlist">Allowlist only</option>
+              <option value="open">Open</option>
+            </select>
+          </Row>
+        </Section>
+      )}
+
+      {/* System */}
+      <Section title="System">
+        {[
+          { label: 'Restart Gateway', emoji: '🔄', action: 'restart' },
+          { label: 'Update OpenClaw', emoji: '⬆️', action: 'update' },
+          { label: 'Gateway Status', emoji: '🔌', action: 'status' },
+          { label: 'Disk Usage', emoji: '💾', action: 'df' },
+          { label: 'Memory Usage', emoji: '🧠', action: 'free' },
+        ].map((a, i, arr) => (
+          <Row key={a.action} label={a.label} last={i === arr.length - 1}>
+            <button onClick={() => runAction(a.label, a.action)} disabled={!!running}
+              style={{ padding: '6px 14px', fontSize: '13px', background: 'var(--btn, #4c8bf5)', color: 'var(--btn-text, #fff)', border: 'none', borderRadius: '8px', cursor: running ? 'not-allowed' : 'pointer', opacity: running === a.label ? 0.6 : 1 }}>
+              {running === a.label ? '⏳' : a.emoji}
+            </button>
+          </Row>
         ))}
-      </div>
+      </Section>
+
+      {/* Panel connection */}
+      <Section title="Panel Connection">
+        <Row label="Server URL" hint="Leave blank for same origin">
+          <input value={panelUrl} onChange={e => setPanelUrl(e.target.value)} placeholder="https://..."
+            style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', width: '160px' }} />
+        </Row>
+        <Row label="Token" last>
+          <input value={panelToken} onChange={e => setPanelToken(e.target.value)} type="password" placeholder="Token"
+            style={{ background: 'var(--bg)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', width: '160px' }} />
+        </Row>
+        <div style={{ padding: '10px 16px' }}>
+          <button onClick={() => { saveSettings(panelUrl, panelToken); toast('Saved ✅') }}
+            style={{ width: '100%', padding: '10px', background: 'var(--btn, #4c8bf5)', color: 'var(--btn-text, #fff)', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+            Save Connection
+          </button>
+        </div>
+      </Section>
+
+      {/* Account */}
+      <Section title="Account">
+        <Row label="Sign Out" hint="Clears saved token from this device" last>
+          <button onClick={onLogout}
+            style={{ padding: '6px 14px', fontSize: '13px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', cursor: 'pointer' }}>
+            Sign Out
+          </button>
+        </Row>
+      </Section>
+
     </div>
   )
 }
@@ -439,64 +610,27 @@ function TerminalTabs() {
 
 
 
-// ─── Settings ────────────────────────────────────────────────
-function SettingsPanel({ onClose, toast }: { onClose: () => void; toast: (m: string) => void }) {
-  const s = getSettings()
-  const [url, setUrl] = useState(s.gatewayUrl)
-  const [token, setToken] = useState(s.token)
 
-  const save = () => { saveSettings(url, token); toast('Saved ✅'); onClose() }
-
-  return (
-    <div className="settings-overlay">
-      <div className="settings-panel">
-        <div className="settings-header">
-          <span>Settings</span>
-          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
-        </div>
-        <label>API Base URL (leave blank = same origin)</label>
-        <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." />
-        <label>Token</label>
-        <input value={token} onChange={e => setToken(e.target.value)} type="password" placeholder="Token" />
-        <button className="primary-btn" onClick={save}>Save</button>
-      </div>
-    </div>
-  )
-}
 
 // ─── App ─────────────────────────────────────────────────────
 export default function App() {
   const [authed, setAuthed] = useState(isAuthenticated())
   const [tab, setTab] = useState<Tab>('dashboard')
-  const [showSettings, setShowSettings] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
 
   const toast = (m: string) => setToastMsg(m)
 
   useEffect(() => {
     const tg = (window as any).Telegram?.WebApp
-    if (tg) { 
-      tg.ready(); 
-      tg.expand();
-      if (tg.requestFullscreen) tg.requestFullscreen();
-    }
+    if (tg) { tg.ready(); tg.expand(); if (tg.requestFullscreen) tg.requestFullscreen(); }
   }, [])
 
   if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />
-
-  const handleLogout = () => {
-    logout()
-    setAuthed(false)
-  }
 
   return (
     <div className="app">
       <header className="app-header">
         <span className="app-title">🤖 OpenClaw Panel</span>
-        <div className="header-right" style={{ display: 'flex', gap: '4px' }}>
-          <button className="icon-btn" onClick={() => setShowSettings(true)}><Settings size={18} /></button>
-          <button className="icon-btn" onClick={handleLogout} title="Logout"><LogOut size={18} /></button>
-        </div>
       </header>
       <main className="app-main no-scroll" style={{ position: 'relative' }}>
         <div style={{ display: tab === 'dashboard' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
@@ -508,11 +642,11 @@ export default function App() {
         <div style={{ display: tab === 'skills' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <Skills toast={toast} />
         </div>
-        <div style={{ display: tab === 'actions' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
-          <Actions toast={toast} />
-        </div>
         <div style={{ display: tab === 'terminal' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <TerminalTabs />
+        </div>
+        <div style={{ display: tab === 'settings' ? 'block' : 'none', height: '100%' }}>
+          <SettingsTab toast={toast} onLogout={() => { logout(); setAuthed(false) }} />
         </div>
       </main>
       <nav className="bottom-nav">
@@ -520,15 +654,14 @@ export default function App() {
           { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
           { id: 'files', icon: <FolderOpen size={20} />, label: 'Files' },
           { id: 'skills', icon: <Boxes size={20} />, label: 'Skills' },
-          { id: 'actions', icon: <Zap size={20} />, label: 'Actions' },
           { id: 'terminal', icon: <Terminal size={20} />, label: 'Terminal' },
+          { id: 'settings', icon: <Settings size={20} />, label: 'Settings' },
         ] as const).map(t => (
           <button key={t.id} className={`nav-btn ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
             {t.icon}<span>{t.label}</span>
           </button>
         ))}
       </nav>
-      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} toast={toast} />}
       {toastMsg && <Toast msg={toastMsg} onDone={() => setToastMsg('')} />}
     </div>
   )
