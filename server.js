@@ -10,7 +10,7 @@ import { randomBytes } from 'crypto';
 import os from 'os';
 import pty from 'node-pty';
 import { SkillManager } from './core/skill-manager.js';
-import { tabs as dbTabs, logs as dbLogs } from './core/db.js';
+import { tabs as dbTabs, logs as dbLogs, buffers as dbBuffers, MAX_BUFFER } from './core/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PANEL_PORT || 3001;
@@ -143,10 +143,14 @@ app.patch('/api/tabs/:id', (req, res) => {
 });
 
 app.delete('/api/tabs/:id', (req, res) => {
-  dbTabs.delete(req.params.id);
-  // Also kill the PTY if alive
-  const pty = ptySessions.get(req.params.id);
-  if (pty) { try { pty.kill(); } catch {} ptySessions.delete(req.params.id); }
+  const id = req.params.id;
+  dbTabs.delete(id);
+  dbBuffers.delete(id);
+  memBuffers.delete(id);
+  clearTimeout(flushTimers.get(id));
+  flushTimers.delete(id);
+  const proc = ptySessions.get(id);
+  if (proc) { try { proc.kill(); } catch {} ptySessions.delete(id); }
   res.json({ ok: true });
 });
 
@@ -324,7 +328,21 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 // ── PTY Terminal WebSocket ─────────────────────────────────────
-const ptySessions = new Map();
+const ptySessions = new Map();      // tabId → pty process
+const memBuffers  = new Map();      // tabId → string (in-memory rolling buffer)
+const flushTimers = new Map();      // tabId → debounce timer
+
+function appendBuffer(tabId, data) {
+  let buf = (memBuffers.get(tabId) || '') + data;
+  if (buf.length > MAX_BUFFER) buf = buf.slice(buf.length - MAX_BUFFER);
+  memBuffers.set(tabId, buf);
+
+  // Debounced DB flush every 2s
+  clearTimeout(flushTimers.get(tabId));
+  flushTimers.set(tabId, setTimeout(() => {
+    dbBuffers.flush(tabId, memBuffers.get(tabId) || '');
+  }, 2000));
+}
 
 wssTerminal.on('connection', (ws, req) => {
   const params = new URLSearchParams(req.url.replace('/ws/terminal?', ''));
@@ -333,6 +351,13 @@ wssTerminal.on('connection', (ws, req) => {
 
   if (token !== TOKEN) { ws.close(4001, 'Unauthorized'); return; }
 
+  // ── Replay scrollback ────────────────────────────────────────
+  const replay = memBuffers.get(tabId) || dbBuffers.get(tabId);
+  if (replay) {
+    ws.send(JSON.stringify({ data: replay }));
+  }
+
+  // ── Spawn PTY if not alive ────────────────────────────────────
   let ptyProcess = ptySessions.get(tabId);
 
   if (!ptyProcess) {
@@ -347,6 +372,7 @@ wssTerminal.on('connection', (ws, req) => {
     ptySessions.set(tabId, ptyProcess);
 
     ptyProcess.onData((data) => {
+      appendBuffer(tabId, data);
       wssTerminal.clients.forEach(client => {
         if (client.readyState === 1 && client.tabId === tabId) {
           client.send(JSON.stringify({ data }));
@@ -355,11 +381,14 @@ wssTerminal.on('connection', (ws, req) => {
     });
 
     ptyProcess.onExit(() => {
+      const exitMsg = '\r\n[Process Exited]\r\n';
+      appendBuffer(tabId, exitMsg);
+      // Final flush immediately on exit
+      dbBuffers.flush(tabId, memBuffers.get(tabId) || '');
       ptySessions.delete(tabId);
       wssTerminal.clients.forEach(client => {
         if (client.readyState === 1 && client.tabId === tabId) {
-          client.send(JSON.stringify({ data: '\r\n[Process Exited]\r\n' }));
-          client.close();
+          client.send(JSON.stringify({ data: exitMsg }));
         }
       });
     });

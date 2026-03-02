@@ -22,6 +22,12 @@ db.exec(`
     last_used  INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
+  CREATE TABLE IF NOT EXISTS terminal_buffers (
+    tab_id     TEXT PRIMARY KEY,
+    buffer     TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
   CREATE TABLE IF NOT EXISTS log_entries (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id   TEXT NOT NULL,
@@ -33,6 +39,25 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_log_agent ON log_entries (agent_id, created_at DESC);
 `);
+
+// ── Terminal scrollback buffers ───────────────────────────────
+export const MAX_BUFFER = 50 * 1024; // 50KB per tab
+
+const GET_BUFFER  = db.prepare('SELECT buffer FROM terminal_buffers WHERE tab_id = ?');
+const SET_BUFFER  = db.prepare(`
+  INSERT INTO terminal_buffers (tab_id, buffer, updated_at)
+  VALUES (?, ?, unixepoch())
+  ON CONFLICT(tab_id) DO UPDATE SET buffer = excluded.buffer, updated_at = unixepoch()
+`);
+const DEL_BUFFER  = db.prepare('DELETE FROM terminal_buffers WHERE tab_id = ?');
+
+export const buffers = {
+  get: (tabId) => GET_BUFFER.get(tabId)?.buffer || '',
+
+  flush: (tabId, data) => SET_BUFFER.run(tabId, data),
+
+  delete: (tabId) => DEL_BUFFER.run(tabId),
+};
 
 // ── Terminal tabs ─────────────────────────────────────────────
 export const tabs = {
