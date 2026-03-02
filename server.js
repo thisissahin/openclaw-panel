@@ -355,7 +355,12 @@ app.patch('/api/sessions/:key/model', async (req, res) => {
 
 app.post('/api/sessions/:key/compact', async (req, res) => {
   try {
-    const result = await gatewayCall('sessions.compact', { key: decodeURIComponent(req.params.key) });
+    // Use chat.send with /compact to trigger the real AI-powered compaction pipeline,
+    // identical to what the /compact slash command does. sessions.compact is just a
+    // dumb file truncator and does NOT summarize context.
+    const sessionKey = decodeURIComponent(req.params.key);
+    const idempotencyKey = `panel-compact-${Date.now()}`;
+    const result = await gatewayCall('chat.send', { sessionKey, message: '/compact', idempotencyKey });
     res.json({ ok: true, result });
   } catch (e) { res.json({ ok: false, error: String(e) }); }
 });
@@ -381,7 +386,7 @@ app.get('/api/usage', async (req, res) => {
 // ── Cron API ──────────────────────────────────────────────────
 app.get('/api/cron', async (req, res) => {
   try {
-    const result = await gatewayCall('cron.list', {});
+    const result = await gatewayCall('cron.list', { includeDisabled: true });
     res.json({ ok: true, jobs: result?.jobs || result || [] });
   } catch (e) { res.json({ ok: false, error: String(e) }); }
 });

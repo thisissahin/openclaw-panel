@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowLeft, RefreshCw, Minimize2, RotateCcw, Play, Trash2, Clock, ChevronDown, ChevronUp, Plus, X } from 'lucide-react'
-import { getSessions, compactSession, resetSession, getUsage, getCronJobs, runCronJob, updateCronJob, deleteCronJob, getCronRuns, createCronJob } from './api'
+import { ArrowLeft, RefreshCw, Minimize2, RotateCcw, Play, Trash2, ChevronDown, ChevronUp, Plus, X, Pencil } from 'lucide-react'
+import { getSessions, compactSession, resetSession, getUsage, getCronJobs, runCronJob, updateCronJob, deleteCronJob, createCronJob } from './api'
 
 // ── Helpers ───────────────────────────────────────────────────
 function fmt(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n) }
@@ -58,6 +58,7 @@ function SessionPanel({ agentId, toast }: { agentId: string; toast: (m: string) 
   const [loading, setLoading] = useState(true)
   const [confirm, setConfirm] = useState<null | 'compact' | 'reset'>(null)
   const [busy, setBusy] = useState(false)
+  const [compacting, setCompacting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -72,12 +73,40 @@ function SessionPanel({ agentId, toast }: { agentId: string; toast: (m: string) 
 
   const doCompact = async () => {
     setBusy(true)
+    setConfirm(null)
     try {
       await compactSession(`agent:${agentId}:main`)
-      toast('Session compacted ✅')
-      load()
-    } catch (e: any) { toast(`Error: ${e.message}`) }
-    finally { setBusy(false); setConfirm(null) }
+      // Compaction is async — show spinner and poll until tokens drop
+      setCompacting(true)
+      const tokensBefore = session?.totalTokens || 0
+      const deadline = Date.now() + 90_000 // 90s max
+      const poll = async () => {
+        if (Date.now() > deadline) {
+          setCompacting(false)
+          setBusy(false)
+          toast('Compaction timed out (may still be running)')
+          return
+        }
+        await new Promise(r => setTimeout(r, 3000))
+        try {
+          const r = await getSessions()
+          const sess = (r.sessions || []).find((s: any) => s.key === `agent:${agentId}:main`)
+          if (sess) setSession(sess)
+          const tokensAfter = sess?.totalTokens || 0
+          if (tokensAfter < tokensBefore * 0.8 || tokensAfter === 0) {
+            setCompacting(false)
+            setBusy(false)
+            toast(`Compacted ✅  ${Math.round(tokensBefore / 1000)}k → ${Math.round(tokensAfter / 1000)}k tokens`)
+            return
+          }
+        } catch { }
+        poll()
+      }
+      poll()
+    } catch (e: any) {
+      setBusy(false)
+      toast(`Error: ${e.message}`)
+    }
   }
 
   const doReset = async () => {
@@ -102,30 +131,38 @@ function SessionPanel({ agentId, toast }: { agentId: string; toast: (m: string) 
           onCancel={() => setConfirm(null)}
         />
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
-        {[
-          { label: 'Total Tokens', value: fmt(session.totalTokens || 0) },
-          { label: 'Input', value: fmt(session.inputTokens || 0) },
-          { label: 'Output', value: fmt(session.outputTokens || 0) },
-          { label: 'Cached', value: fmt(session.cacheRead || 0) },
-        ].map(({ label, value }) => (
-          <div key={label} style={{ background: '#2a2a2a', borderRadius: '8px', padding: '10px 12px' }}>
-            <div style={{ color: '#666', fontSize: '11px', marginBottom: '4px' }}>{label}</div>
-            <div style={{ color: '#fff', fontSize: '18px', fontWeight: 700 }}>{value}</div>
+      {/* Token usage */}
+      {(() => {
+        const used = session.totalTokens || 0
+        const ctx = session.contextTokens || 200000
+        const pct = Math.min(100, Math.round((used / ctx) * 100))
+        const color = pct > 80 ? '#ef4444' : pct > 50 ? '#f59e0b' : '#4a9eff'
+        return (
+          <div style={{ background: '#2a2a2a', borderRadius: '10px', padding: '12px 14px', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px' }}>
+              <div style={{ color: '#888', fontSize: '11px' }}>Context Used</div>
+              <div style={{ color: '#fff', fontSize: '20px', fontWeight: 700 }}>{fmt(used)} <span style={{ color: '#555', fontSize: '12px', fontWeight: 400 }}>/ {fmt(ctx)}</span></div>
+            </div>
+            <div style={{ height: '6px', background: '#333', borderRadius: '3px' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: '3px', transition: 'width 0.4s ease' }} />
+            </div>
+            <div style={{ textAlign: 'right', color: color, fontSize: '11px', marginTop: '4px' }}>{pct}%</div>
           </div>
-        ))}
-      </div>
+        )
+      })()}
       <div style={{ color: '#666', fontSize: '12px', marginBottom: '12px' }}>
         Last active: {fmtDate(session.updatedAt)} · Model: {session.modelProvider}/{session.model}
       </div>
       <div style={{ display: 'flex', gap: '8px' }}>
-        <button className="btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={() => setConfirm('compact')} disabled={busy}>
-          <Minimize2 size={14} /> Compact
+        <button className="btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', ...(compacting ? { background: '#1a3a5c', borderColor: '#4a9eff', color: '#4a9eff' } : {}) }} onClick={() => setConfirm('compact')} disabled={busy}>
+          {compacting
+            ? <><RefreshCw size={14} style={{ animation: 'spin 1s linear infinite', color: '#4a9eff' }} /><span style={{ color: '#4a9eff' }}>Compacting…</span></>
+            : <><Minimize2 size={14} /> Compact</>}
         </button>
         <button className="btn btn-danger" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }} onClick={() => setConfirm('reset')} disabled={busy}>
           <RotateCcw size={14} /> Reset
         </button>
-        <button className="icon-btn" onClick={load}><RefreshCw size={14} /></button>
+        <button className="icon-btn" onClick={load} disabled={busy}><RefreshCw size={14} /></button>
       </div>
     </>
   )
@@ -280,19 +317,42 @@ function UsagePanel({ agentId }: { agentId: string }) {
 function CronPanel({ agentId, toast }: { agentId: string; toast: (m: string) => void }) {
   const [jobs, setJobs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [expandedRuns, setExpandedRuns] = useState<string | null>(null)
-  const [runs, setRuns] = useState<any[]>([])
   const [confirm, setConfirm] = useState<string | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
+  const [showForm, setShowForm] = useState(false)
+  const [editingJobId, setEditingJobId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   // Create form state
   const [newName, setNewName] = useState('')
-  const [newKind, setNewKind] = useState<'every' | 'cron'>('every')
-  const [newEvery, setNewEvery] = useState('3600000')
-  const [newCron, setNewCron] = useState('0 9 * * *')
+  const [newRepeatType, setNewRepeatType] = useState<'interval' | 'time'>('interval')
+  const [newIntervalVal, setNewIntervalVal] = useState(1)
+  const [newIntervalUnit, setNewIntervalUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
+  const [newTimeHour, setNewTimeHour] = useState(9)
+  const [newTimeMin, setNewTimeMin] = useState(0)
+  const [newWeekdays, setNewWeekdays] = useState<number[]>([]) // empty = every day
+  const [newCron, setNewCron] = useState('')
   const [newPayload, setNewPayload] = useState('')
   const [newTarget, setNewTarget] = useState<'main' | 'isolated'>('isolated')
+
+  const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+
+  function resolveSchedule() {
+    if (newCron.trim()) return { kind: 'cron', expr: newCron.trim() }
+    if (newRepeatType === 'interval') {
+      const ms = newIntervalVal * (newIntervalUnit === 'minutes' ? 60_000 : newIntervalUnit === 'hours' ? 3_600_000 : 86_400_000)
+      return { kind: 'every', everyMs: ms }
+    }
+    // specific time
+    const days = newWeekdays.length > 0 ? newWeekdays.map(d => d === 6 ? 0 : d + 1).join(',') : '*'
+    return { kind: 'cron', expr: `${newTimeMin} ${newTimeHour} * * ${days}` }
+  }
+
+  function schedulePreview() {
+    if (newCron.trim()) return `cron: ${newCron.trim()}`
+    if (newRepeatType === 'interval') return `Every ${newIntervalVal} ${newIntervalUnit}`
+    const dayLabel = newWeekdays.length === 0 ? 'every day' : newWeekdays.map(d => WEEKDAYS[d]).join(', ')
+    return `${String(newTimeHour).padStart(2,'0')}:${String(newTimeMin).padStart(2,'0')} UTC, ${dayLabel}`
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -329,37 +389,71 @@ function CronPanel({ agentId, toast }: { agentId: string; toast: (m: string) => 
     } catch (e: any) { toast(`Error: ${e.message}`) }
   }
 
-  const loadRuns = async (job: any) => {
-    const id = job.jobId || job.id
-    if (expandedRuns === id) { setExpandedRuns(null); return }
-    try {
-      const r = await getCronRuns(id)
-      setRuns(r.runs || [])
-      setExpandedRuns(id)
-    } catch { }
+  function openCreate() {
+    setEditingJobId(null)
+    setNewName(''); setNewPayload(''); setNewCron('')
+    setNewRepeatType('interval'); setNewIntervalVal(1); setNewIntervalUnit('hours')
+    setNewTimeHour(9); setNewTimeMin(0); setNewWeekdays([]); setNewTarget('isolated')
+    setShowForm(true)
   }
 
-  const create = async () => {
+  function openEdit(job: any) {
+    setEditingJobId(job.jobId || job.id)
+    setNewName(job.name || '')
+    setNewPayload(job.payload?.message || '')
+    setNewCron('')
+    const s = job.schedule
+    if (s?.kind === 'every') {
+      setNewRepeatType('interval')
+      const ms = s.everyMs || 3_600_000
+      if (ms % 86_400_000 === 0) { setNewIntervalVal(ms / 86_400_000); setNewIntervalUnit('days') }
+      else if (ms % 3_600_000 === 0) { setNewIntervalVal(ms / 3_600_000); setNewIntervalUnit('hours') }
+      else { setNewIntervalVal(Math.round(ms / 60_000)); setNewIntervalUnit('minutes') }
+    } else if (s?.kind === 'cron') {
+      const parts = (s.expr || '').split(' ')
+      const min = Number(parts[0]), hour = Number(parts[1])
+      if (!isNaN(min) && !isNaN(hour)) {
+        setNewRepeatType('time'); setNewTimeHour(hour); setNewTimeMin(min)
+        const dayPart = parts[4]
+        if (dayPart && dayPart !== '*') {
+          const mapped = dayPart.split(',').map((d: string) => { const n = Number(d); return n === 0 ? 6 : n - 1 })
+          setNewWeekdays(mapped)
+        } else setNewWeekdays([])
+      } else { setNewCron(s.expr || ''); setNewRepeatType('interval') }
+    }
+    setNewTarget(job.sessionTarget === 'main' ? 'main' : 'isolated')
+    setShowForm(true)
+  }
+
+  const submitForm = async () => {
     if (!newPayload.trim()) { toast('Payload message required'); return }
     setBusy(true)
     try {
-      const schedule = newKind === 'every'
-        ? { kind: 'every', everyMs: Number(newEvery) }
-        : { kind: 'cron', expr: newCron }
-      await createCronJob({
-        name: newName || undefined,
-        schedule,
-        sessionTarget: newTarget,
-        payload: { kind: 'agentTurn', message: newPayload },
-        enabled: true,
-      })
-      toast('Cron job created ✅')
-      setShowCreate(false)
+      if (editingJobId) {
+        await updateCronJob(editingJobId, {
+          name: newName || undefined,
+          schedule: resolveSchedule(),
+          sessionTarget: newTarget,
+          payload: { kind: 'agentTurn', message: newPayload },
+        })
+        toast('Job updated ✅')
+      } else {
+        await createCronJob({
+          name: newName || undefined,
+          schedule: resolveSchedule(),
+          sessionTarget: newTarget,
+          payload: { kind: 'agentTurn', message: newPayload },
+          enabled: true,
+        })
+        toast('Cron job created ✅')
+      }
+      setShowForm(false); setEditingJobId(null)
       setNewName(''); setNewPayload('')
       load()
     } catch (e: any) { toast(`Error: ${e.message}`) }
     finally { setBusy(false) }
   }
+
 
   const inputStyle = { width: '100%', background: '#2a2a2a', border: '1px solid #444', borderRadius: '8px', padding: '8px 10px', color: '#fff', fontSize: '13px', boxSizing: 'border-box' as const }
   const labelStyle = { color: '#888', fontSize: '12px', display: 'block', marginBottom: '4px' }
@@ -376,54 +470,109 @@ function CronPanel({ agentId, toast }: { agentId: string; toast: (m: string) => 
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
         <span style={{ color: '#888', fontSize: '12px' }}>{jobs.length} job{jobs.length !== 1 ? 's' : ''}</span>
-        <button className="btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', fontSize: '12px' }} onClick={() => setShowCreate(s => !s)}>
-          {showCreate ? <X size={12} /> : <Plus size={12} />} {showCreate ? 'Cancel' : 'New Job'}
+        <button className="btn" style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', fontSize: '12px' }} onClick={() => showForm ? setShowForm(false) : openCreate()}>
+          {showForm && !editingJobId ? <X size={12} /> : <Plus size={12} />} {showForm && !editingJobId ? 'Cancel' : 'New Job'}
         </button>
       </div>
 
-      {showCreate && (
-        <div style={{ background: '#2a2a2a', borderRadius: '10px', padding: '14px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {showForm && (
+        <div style={{ background: '#2a2a2a', borderRadius: '10px', padding: '14px', marginBottom: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{editingJobId ? 'Edit Job' : 'New Job'}</span>
+            <button className="icon-btn" onClick={() => { setShowForm(false); setEditingJobId(null) }}><X size={14} /></button>
+          </div>
+
+          {/* Name */}
           <div>
             <label style={labelStyle}>Name (optional)</label>
-            <input style={inputStyle} value={newName} onChange={e => setNewName(e.target.value)} placeholder="My daily task" />
+            <input style={inputStyle} value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Morning briefing" />
           </div>
+
+          {/* Schedule */}
           <div>
-            <label style={labelStyle}>Schedule type</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {(['every', 'cron'] as const).map(k => (
-                <button key={k} className={`btn${newKind === k ? '' : ''}`} onClick={() => setNewKind(k)} style={{ flex: 1, background: newKind === k ? '#4a9eff' : '#333', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px', fontSize: '12px', cursor: 'pointer' }}>{k}</button>
+            <label style={labelStyle}>Repeat</label>
+            <div style={{ display: 'flex', gap: '4px', background: '#1a1a1a', borderRadius: '8px', padding: '3px', marginBottom: '10px' }}>
+              {([['interval', 'Every X'], ['time', 'At a time']] as const).map(([mode, label]) => (
+                <button key={mode} onClick={() => setNewRepeatType(mode)} style={{ flex: 1, background: newRepeatType === mode ? '#333' : 'transparent', color: newRepeatType === mode ? '#fff' : '#666', border: 'none', borderRadius: '6px', padding: '6px', fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s' }}>{label}</button>
               ))}
             </div>
-          </div>
-          {newKind === 'every' ? (
-            <div>
-              <label style={labelStyle}>Interval (ms)</label>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {[['1h', '3600000'], ['6h', '21600000'], ['12h', '43200000'], ['24h', '86400000']].map(([l, v]) => (
-                  <button key={v} onClick={() => setNewEvery(v)} style={{ background: newEvery === v ? '#4a9eff' : '#333', color: '#fff', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '12px', cursor: 'pointer' }}>{l}</button>
-                ))}
+
+            {newRepeatType === 'interval' && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#888', fontSize: '13px', whiteSpace: 'nowrap' }}>Every</span>
+                <input type="number" min={1} value={newIntervalVal} onChange={e => setNewIntervalVal(Math.max(1, Number(e.target.value)))}
+                  style={{ ...inputStyle, width: '70px', textAlign: 'center', padding: '8px 6px' }} />
+                <select value={newIntervalUnit} onChange={e => setNewIntervalUnit(e.target.value as any)}
+                  style={{ flex: 1, background: '#333', border: '1px solid #555', borderRadius: '8px', color: '#fff', padding: '8px 10px', fontSize: '13px', cursor: 'pointer' }}>
+                  <option value="minutes">minutes</option>
+                  <option value="hours">hours</option>
+                  <option value="days">days</option>
+                </select>
               </div>
+            )}
+
+            {newRepeatType === 'time' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span style={{ color: '#888', fontSize: '13px' }}>At</span>
+                  <select value={newTimeHour} onChange={e => setNewTimeHour(Number(e.target.value))}
+                    style={{ flex: 1, background: '#333', border: '1px solid #555', borderRadius: '8px', color: '#fff', padding: '8px 10px', fontSize: '13px', cursor: 'pointer' }}>
+                    {Array.from({ length: 24 }, (_, i) => <option key={i} value={i}>{String(i).padStart(2,'0')}</option>)}
+                  </select>
+                  <span style={{ color: '#555' }}>:</span>
+                  <select value={newTimeMin} onChange={e => setNewTimeMin(Number(e.target.value))}
+                    style={{ flex: 1, background: '#333', border: '1px solid #555', borderRadius: '8px', color: '#fff', padding: '8px 10px', fontSize: '13px', cursor: 'pointer' }}>
+                    {[0,5,10,15,20,25,30,35,40,45,50,55].map(m => <option key={m} value={m}>{String(m).padStart(2,'0')}</option>)}
+                  </select>
+                  <span style={{ color: '#555', fontSize: '12px' }}>UTC</span>
+                </div>
+                <div>
+                  <div style={{ color: '#666', fontSize: '11px', marginBottom: '6px' }}>Repeat on (leave empty = every day)</div>
+                  <div style={{ display: 'flex', gap: '5px' }}>
+                    {WEEKDAYS.map((d, i) => (
+                      <button key={i} onClick={() => setNewWeekdays(prev => prev.includes(i) ? prev.filter(x => x !== i) : [...prev, i])}
+                        style={{ flex: 1, background: newWeekdays.includes(i) ? '#4a9eff' : '#333', color: newWeekdays.includes(i) ? '#fff' : '#666', border: 'none', borderRadius: '6px', padding: '5px 2px', fontSize: '10px', cursor: 'pointer', transition: 'all 0.15s' }}>{d}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: '8px', background: '#1a1a1a', borderRadius: '6px', padding: '6px 10px', color: '#4a9eff', fontSize: '11px' }}>
+              🕐 {schedulePreview()}
             </div>
-          ) : (
-            <div>
-              <label style={labelStyle}>Cron expression</label>
-              <input style={inputStyle} value={newCron} onChange={e => setNewCron(e.target.value)} placeholder="0 9 * * *" />
-            </div>
-          )}
+
+            <details style={{ marginTop: '8px' }}>
+              <summary style={{ color: '#555', fontSize: '11px', cursor: 'pointer', userSelect: 'none' }}>Advanced: custom cron expression</summary>
+              <input style={{ ...inputStyle, marginTop: '6px' }} value={newCron} onChange={e => setNewCron(e.target.value)} placeholder="e.g. 15 10 * * 1-5" />
+              <div style={{ color: '#444', fontSize: '10px', marginTop: '3px' }}>Overrides the picker above when filled. Format: min hour day month weekday</div>
+            </details>
+          </div>
+
+          {/* Run context */}
           <div>
-            <label style={labelStyle}>Session target</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {(['isolated', 'main'] as const).map(k => (
-                <button key={k} onClick={() => setNewTarget(k)} style={{ flex: 1, background: newTarget === k ? '#4a9eff' : '#333', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px', fontSize: '12px', cursor: 'pointer' }}>{k}</button>
+            <label style={labelStyle}>Run context</label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {([
+                ['isolated', '🔄 Fresh session', 'Starts clean each run — no memory of previous runs. Best for most tasks.'],
+                ['main',     '💬 Agent session',  "Runs inside the agent's live context. Use for reminders or in-chat nudges."],
+              ] as const).map(([val, title, desc]) => (
+                <button key={val} onClick={() => setNewTarget(val)} style={{ textAlign: 'left', background: newTarget === val ? '#1a3a5c' : '#1a1a1a', border: `1px solid ${newTarget === val ? '#4a9eff' : '#333'}`, borderRadius: '8px', padding: '10px 12px', cursor: 'pointer', transition: 'all 0.15s' }}>
+                  <div style={{ color: newTarget === val ? '#fff' : '#aaa', fontSize: '13px', fontWeight: 600, marginBottom: '2px' }}>{title}</div>
+                  <div style={{ color: '#555', fontSize: '11px', lineHeight: 1.4 }}>{desc}</div>
+                </button>
               ))}
             </div>
           </div>
+
+          {/* Prompt */}
           <div>
-            <label style={labelStyle}>Prompt / message</label>
-            <textarea style={{ ...inputStyle, minHeight: '70px', resize: 'vertical' }} value={newPayload} onChange={e => setNewPayload(e.target.value)} placeholder="What should the agent do?" />
+            <label style={labelStyle}>What should the agent do?</label>
+            <textarea style={{ ...inputStyle, minHeight: '70px', resize: 'vertical' }} value={newPayload} onChange={e => setNewPayload(e.target.value)} placeholder="e.g. Summarize the latest news and send me a briefing" />
           </div>
-          <button className="btn" style={{ background: '#4a9eff', color: '#fff' }} onClick={create} disabled={busy}>
-            {busy ? 'Creating...' : 'Create Job'}
+
+          <button className="btn" style={{ background: '#4a9eff', color: '#fff' }} onClick={submitForm} disabled={busy}>
+            {busy ? (editingJobId ? 'Saving...' : 'Creating...') : (editingJobId ? 'Save Changes' : 'Create Job')}
           </button>
         </div>
       )}
@@ -436,41 +585,24 @@ function CronPanel({ agentId, toast }: { agentId: string; toast: (m: string) => 
         jobs.map(job => {
           const id = job.jobId || job.id
           return (
-            <div key={id} style={{ background: '#2a2a2a', borderRadius: '10px', padding: '12px', marginBottom: '8px' }}>
+            <div key={id} style={{ background: '#2a2a2a', borderRadius: '10px', padding: '12px', marginBottom: '8px', opacity: job.enabled ? 1 : 0.6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
-                <div>
-                  <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{job.name || id.slice(0, 8)}</div>
-                  <div style={{ color: '#888', fontSize: '11px', marginTop: '2px' }}>{fmtSchedule(job)}</div>
+                <div style={{ flex: 1, minWidth: 0, marginRight: '8px' }}>
+                  <div style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>{job.name || <span style={{ color: '#555' }}>{id.slice(0, 8)}</span>}</div>
+                  <div style={{ color: '#666', fontSize: '11px', marginTop: '2px' }}>{fmtSchedule(job)}</div>
                 </div>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  {/* Toggle */}
-                  <button onClick={() => toggle(job)} style={{ background: job.enabled ? '#22c55e22' : '#ffffff11', color: job.enabled ? '#22c55e' : '#666', border: `1px solid ${job.enabled ? '#22c55e44' : '#444'}`, borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexShrink: 0 }}>
+                  <button onClick={() => toggle(job)} style={{ background: job.enabled ? '#22c55e22' : '#ffffff11', color: job.enabled ? '#22c55e' : '#555', border: `1px solid ${job.enabled ? '#22c55e44' : '#444'}`, borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>
                     {job.enabled ? 'ON' : 'OFF'}
                   </button>
-                  {/* Run now */}
+                  <button className="icon-btn" onClick={() => openEdit(job)} title="Edit"><Pencil size={13} /></button>
                   <button className="icon-btn" onClick={() => runNow(job)} title="Run now"><Play size={13} /></button>
-                  {/* History */}
-                  <button className="icon-btn" onClick={() => loadRuns(job)} title="Run history"><Clock size={13} /></button>
-                  {/* Delete */}
                   <button className="icon-btn" onClick={() => setConfirm(id)} title="Delete" style={{ color: '#ef4444' }}><Trash2 size={13} /></button>
                 </div>
               </div>
               <div style={{ color: '#555', fontSize: '11px' }}>
-                {job.payload?.kind === 'agentTurn' ? `💬 ${(job.payload.message || '').slice(0, 60)}` : job.payload?.kind}
+                {job.payload?.kind === 'agentTurn' ? `💬 ${(job.payload.message || '').slice(0, 80)}` : job.payload?.kind}
               </div>
-              {/* Run history */}
-              {expandedRuns === id && (
-                <div style={{ marginTop: '10px', borderTop: '1px solid #333', paddingTop: '10px' }}>
-                  {runs.length === 0 ? (
-                    <p style={{ color: '#666', fontSize: '12px' }}>No runs yet.</p>
-                  ) : runs.slice(0, 5).map((run: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ color: run.status === 'ok' ? '#22c55e' : '#ef4444', fontSize: '12px' }}>{run.status}</span>
-                      <span style={{ color: '#666', fontSize: '11px' }}>{fmtDate(run.startedAt || run.ts)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )
         })
