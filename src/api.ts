@@ -56,3 +56,9 @@ export const sendChat = (message: string, contextFiles: { name: string; content:
 export const runAction = (action: string) => req('/api/action', 'POST', { action });
 export const getSkills = () => req('/api/skills');
 export const toggleSkill = (name: string, enabled: boolean) => req('/api/skills/toggle', 'POST', { name, enabled });
+
+// Terminal tabs (DB-backed)
+export const getTabs = () => req('/api/tabs');
+export const saveTab = (id: string, name: string) => req('/api/tabs', 'POST', { id, name });
+export const renameTab = (id: string, name: string) => req(`/api/tabs/${id}`, 'PATCH', { name });
+export const deleteTab = (id: string) => req(`/api/tabs/${id}`, 'DELETE');

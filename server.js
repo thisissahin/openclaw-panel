@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import os from 'os';
 import pty from 'node-pty';
 import { SkillManager } from './core/skill-manager.js';
+import { tabs as dbTabs, logs as dbLogs } from './core/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PANEL_PORT || 3001;
@@ -118,6 +119,35 @@ app.get('/api/agents', (req, res) => {
     }
   });
   res.json({ ok: true, agents });
+});
+
+// ── Terminal tabs (DB-backed) ─────────────────────────────────
+app.get('/api/tabs', (req, res) => {
+  const agentId = req.headers['x-agent-id'] || 'main';
+  res.json({ ok: true, tabs: dbTabs.list(agentId) });
+});
+
+app.post('/api/tabs', (req, res) => {
+  const agentId = req.headers['x-agent-id'] || 'main';
+  const { id, name } = req.body;
+  if (!id) return res.status(400).json({ error: 'id required' });
+  dbTabs.upsert(id, name || 'Terminal', agentId);
+  res.json({ ok: true, tab: dbTabs.get(id) });
+});
+
+app.patch('/api/tabs/:id', (req, res) => {
+  const { name } = req.body;
+  if (name) dbTabs.rename(req.params.id, name);
+  else dbTabs.touch(req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/tabs/:id', (req, res) => {
+  dbTabs.delete(req.params.id);
+  // Also kill the PTY if alive
+  const pty = ptySessions.get(req.params.id);
+  if (pty) { try { pty.kill(); } catch {} ptySessions.delete(req.params.id); }
+  res.json({ ok: true });
 });
 
 // ── Memory files ──────────────────────────────────────────────
@@ -411,7 +441,14 @@ wssLogs.on('connection', (ws, req) => {
     for (const e of entries) if (e) ws.send(JSON.stringify(e));
   };
 
-  send({ type: 'system', time: new Date().toLocaleTimeString('en', { hour12: false }), text: `📡 Connected — watching agent:${agentId}` });
+  // Replay recent log history from DB
+  const history = dbLogs.recent(agentId, 200);
+  if (history.length) {
+    send({ type: 'system', time: new Date().toLocaleTimeString('en', { hour12: false }), text: `📜 Replaying ${history.length} recent entries…` });
+    for (const e of history) send(e);
+  }
+
+  send({ type: 'system', time: new Date().toLocaleTimeString('en', { hour12: false }), text: `📡 Live — watching agent:${agentId}` });
 
   let watchedFile = null;
   let fileOffset = 0;
@@ -424,8 +461,15 @@ wssLogs.on('connection', (ws, req) => {
       fileOffset = lines.length;
       for (const line of newLines) {
         const formatted = formatEntry(line);
-        if (formatted) send(formatted);
+        if (!formatted) continue;
+        const entries = Array.isArray(formatted) ? formatted : [formatted];
+        for (const e of entries) {
+          dbLogs.insert(agentId, e);
+          send(e);
+        }
       }
+      // Prune old entries periodically
+      if (newLines.length > 0) dbLogs.prune(agentId);
     } catch {}
   };
 

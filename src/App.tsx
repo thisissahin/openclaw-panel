@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes, LogOut } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping } from './api'
+import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab } from './api'
 import './App.css'
 
 type Tab = 'dashboard' | 'memory' | 'files' | 'skills' | 'actions' | 'logs'
@@ -293,27 +293,63 @@ import TerminalView from './TerminalView'
 
 // ─── Terminal Tabs ───────────────────────────────────────────
 function TerminalTabs({ onBack }: { onBack: () => void }) {
-  const [tabs, setTabs] = useState<{id: string, name: string}[]>([{ id: Date.now().toString(), name: 'Term 1' }]);
-  const [activeTab, setActiveTab] = useState(tabs[0].id);
+  const [tabs, setTabs] = useState<{id: string, name: string}[]>([]);
+  const [activeTab, setActiveTab] = useState<string>('');
+  const [loaded, setLoaded] = useState(false);
+
+  // Load tabs from DB on mount
+  useEffect(() => {
+    getTabs().then((res: any) => {
+      if (res.tabs && res.tabs.length > 0) {
+        setTabs(res.tabs);
+        const saved = localStorage.getItem('activeTermTab');
+        setActiveTab(saved && res.tabs.find((t: any) => t.id === saved) ? saved : res.tabs[0].id);
+      } else {
+        const id = Date.now().toString();
+        const name = 'Terminal 1';
+        saveTab(id, name).then(() => {
+          setTabs([{ id, name }]);
+          setActiveTab(id);
+        });
+      }
+      setLoaded(true);
+    }).catch(() => {
+      const id = Date.now().toString();
+      setTabs([{ id, name: 'Terminal 1' }]);
+      setActiveTab(id);
+      setLoaded(true);
+    });
+  }, []);
+
+  // Persist active tab to localStorage
+  useEffect(() => {
+    if (activeTab) localStorage.setItem('activeTermTab', activeTab);
+  }, [activeTab]);
 
   const addTab = () => {
     const id = Date.now().toString();
-    setTabs([...tabs, { id, name: `Term ${tabs.length + 1}` }]);
-    setActiveTab(id);
+    const name = `Terminal ${tabs.length + 1}`;
+    saveTab(id, name).then(() => {
+      setTabs(prev => [...prev, { id, name }]);
+      setActiveTab(id);
+    });
   };
 
   const closeTab = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const newTabs = tabs.filter(t => t.id !== id);
-    if (newTabs.length === 0) {
-      onBack();
-      return;
-    }
-    setTabs(newTabs);
-    if (activeTab === id) {
-      setActiveTab(newTabs[newTabs.length - 1].id);
-    }
+    deleteTab(id).then(() => {
+      const newTabs = tabs.filter(t => t.id !== id);
+      if (newTabs.length === 0) { onBack(); return; }
+      setTabs(newTabs);
+      if (activeTab === id) setActiveTab(newTabs[newTabs.length - 1].id);
+    });
   };
+
+  if (!loaded) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--hint)' }}>
+      Loading terminals…
+    </div>
+  );
 
   return (
     <div className="logs-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
