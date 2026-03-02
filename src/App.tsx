@@ -704,7 +704,7 @@ export default function App() {
           <Dashboard />
         </div>
         <div style={{ display: tab === 'files' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <Files toast={toast} isActive={activeTab === 'files'} />
+          <Files toast={toast} isActive={tab === 'files'} />
         </div>
         <div style={{ display: tab === 'skills' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <Skills toast={toast} />
