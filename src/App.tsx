@@ -318,9 +318,8 @@ function TerminalTabs() {
         setActiveTab(saved && res.tabs.find((t: any) => t.id === saved) ? saved : res.tabs[0].id);
       } else {
         const id = Date.now().toString();
-        const name = 'Terminal 1';
-        saveTab(id, name).then(() => {
-          setTabs([{ id, name }]);
+        saveTab(id, 'Terminal 1').then(() => {
+          setTabs([{ id, name: 'Terminal 1' }]);
           setActiveTab(id);
         });
       }
@@ -338,9 +337,14 @@ function TerminalTabs() {
     if (activeTab) localStorage.setItem('activeTermTab', activeTab);
   }, [activeTab]);
 
+  const nextTabName = (current: {id: string, name: string}[]) => {
+    const nums = current.map(t => parseInt(t.name.replace(/\D/g, '')) || 0);
+    return `Terminal ${(nums.length ? Math.max(...nums) : 0) + 1}`;
+  };
+
   const addTab = () => {
     const id = Date.now().toString();
-    const name = `Terminal ${tabs.length + 1}`;
+    const name = nextTabName(tabs);
     saveTab(id, name).then(() => {
       setTabs(prev => [...prev, { id, name }]);
       setActiveTab(id);
@@ -351,7 +355,14 @@ function TerminalTabs() {
     if (e) e.stopPropagation();
     deleteTab(id).then(() => {
       const newTabs = tabs.filter(t => t.id !== id);
-      if (newTabs.length === 0) { addTab(); return; }
+      if (newTabs.length === 0) {
+        const newId = Date.now().toString();
+        saveTab(newId, 'Terminal 1').then(() => {
+          setTabs([{ id: newId, name: 'Terminal 1' }]);
+          setActiveTab(newId);
+        });
+        return;
+      }
       setTabs(newTabs);
       if (activeTab === id) setActiveTab(newTabs[newTabs.length - 1].id);
     });
