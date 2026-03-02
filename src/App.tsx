@@ -280,16 +280,61 @@ function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout
   )
 
   const defaults = cfg?.agents?.defaults
+  const agentList: any[] = cfg?.agents?.list || []
   const tg = cfg?.channels?.telegram
+  const defaultModel = defaults?.model?.primary || ''
 
   return (
     <div style={{ overflowY: 'auto', height: '100%', paddingTop: '12px', paddingBottom: '32px' }}>
 
-      {/* Models */}
+      {/* Per-agent models */}
+      {agentList.length > 0 && (
+        <Section title="Agents — Active Model">
+          {agentList.map((agent: any, i: number) => {
+            const hasOverride = !!agent.model
+            const activeModel = agent.model || defaultModel
+            return (
+              <Row
+                key={agent.id}
+                label={agent.name || agent.id}
+                hint={hasOverride ? '⚡ Override set' : `↩ Using default`}
+                last={i === agentList.length - 1}
+              >
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <ModelSelect
+                    value={activeModel}
+                    onChange={v => {
+                      const idx = agentList.findIndex((a: any) => a.id === agent.id)
+                      patch(`agents.list.${idx}.model`, v, `${agent.id} model`)
+                    }}
+                  />
+                  {hasOverride && (
+                    <button
+                      onClick={() => {
+                        const idx = agentList.findIndex((a: any) => a.id === agent.id)
+                        // Remove override — set to undefined via empty string sentinel, handled in patchConfig
+                        const next = JSON.parse(JSON.stringify(cfg))
+                        delete next.agents.list[idx].model
+                        import('./api').then(m => m.patchConfig(`agents.list.${idx}.model`, null))
+                          .then(() => { setCfg(next); toast(`${agent.id}: override removed, using default`) })
+                      }}
+                      style={{ fontSize: '11px', color: 'var(--hint)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      ✕ Remove override
+                    </button>
+                  )}
+                </div>
+              </Row>
+            )
+          })}
+        </Section>
+      )}
+
+      {/* Default fallback model */}
       {defaults && (
-        <Section title="Model">
-          <Row label="Primary Model" hint="Default model for all agents">
-            <ModelSelect value={defaults.model?.primary || ''} onChange={v => patch('agents.defaults.model.primary', v, 'Primary model')} />
+        <Section title="Default Model (fallback)">
+          <Row label="Default" hint="Used for agents with no override set">
+            <ModelSelect value={defaultModel} onChange={v => patch('agents.defaults.model.primary', v, 'Default model')} />
           </Row>
           <Row label="Context Pruning" hint="How to manage context window" last>
             <select value={defaults.contextPruning?.mode || 'cache-ttl'}

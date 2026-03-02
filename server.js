@@ -321,7 +321,9 @@ app.patch('/api/config', (req, res) => {
       if (obj[keys[i]] === undefined) obj[keys[i]] = {};
       obj = obj[keys[i]];
     }
-    obj[keys[keys.length - 1]] = value;
+    // null = delete the key
+    if (value === null) delete obj[keys[keys.length - 1]];
+    else obj[keys[keys.length - 1]] = value;
 
     writeConfig(cfg);
     res.json({ ok: true });
