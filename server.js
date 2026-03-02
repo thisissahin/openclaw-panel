@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile, rmSync } from 'fs';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -230,6 +230,19 @@ app.post('/api/files/write', (req, res) => {
     const { path: rel, content } = req.body;
     if (!rel || rel.includes('..')) return res.status(400).json({ error: 'Invalid path' });
     writeFileSync(join(WORKSPACE, rel), content, 'utf-8');
+    res.json({ ok: true });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.delete('/api/files/delete', (req, res) => {
+  try {
+    const WORKSPACE = getWorkspace(req);
+    const rel = req.query.path;
+    if (!rel || rel.includes('..')) return res.status(400).json({ error: 'Invalid path' });
+    const full = join(WORKSPACE, rel);
+    rmSync(full, { recursive: true, force: true });
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, error: String(e) });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { X, Save, Edit3, Paperclip, Send } from 'lucide-react'
-import { listFiles, readFile, writeFile, sendChat } from './api'
+import { X, Save, Edit3, Paperclip, Send, Trash2 } from 'lucide-react'
+import { listFiles, readFile, writeFile, deleteFile, sendChat } from './api'
 
 type CtxFile = { name: string; content: string }
 
@@ -14,6 +14,7 @@ export default function Files({ toast, isActive }: { toast: (m: string) => void;
   const [context, setContext] = useState<CtxFile[]>([])
   const [chatInput, setChatInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const loadDir = useCallback(async (p: string) => {
     setLoading(true)
@@ -75,6 +76,16 @@ export default function Files({ toast, isActive }: { toast: (m: string) => void;
     finally { setSending(false) }
   }
 
+  const doDelete = async (path: string) => {
+    try {
+      await deleteFile(path)
+      toast(`Deleted ✅`)
+      setConfirmDelete(null)
+      if (viewing?.name === path) { setViewing(null); setEditing(false) }
+      loadDir(currentPath)
+    } catch (e: any) { toast(`Delete failed: ${e.message}`) }
+  }
+
   const inContext = (name: string) => !!context.find(c => c.name === name)
 
   const fileViewer = viewing && (
@@ -91,6 +102,7 @@ export default function Files({ toast, isActive }: { toast: (m: string) => void;
           ? <button className="icon-btn" onClick={() => setEditing(true)}><Edit3 size={18} /></button>
           : <button className="icon-btn ok" onClick={save}><Save size={18} /></button>
         }
+        <button className="icon-btn" onClick={() => setConfirmDelete(viewing.name)} title="Delete" style={{ color: 'var(--danger)' }}><Trash2 size={18} /></button>
       </div>
       {editing
         ? <textarea className="file-editor" value={draft} onChange={e => setDraft(e.target.value)} />
@@ -123,6 +135,12 @@ export default function Files({ toast, isActive }: { toast: (m: string) => void;
                 title="Add to context"
               ><Paperclip size={14} /></button>
             )}
+            <button
+              className="icon-btn"
+              onClick={() => setConfirmDelete(full)}
+              title="Delete"
+              style={{ color: 'var(--danger)', flexShrink: 0 }}
+            ><Trash2 size={14} /></button>
           </div>
         )
       })}
@@ -131,6 +149,18 @@ export default function Files({ toast, isActive }: { toast: (m: string) => void;
 
   return (
     <div className="files-wrapper">
+      {confirmDelete && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: '24px' }}>
+          <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border-2)', borderRadius: 'var(--radius)', padding: '24px', maxWidth: '320px', width: '100%' }}>
+            <p style={{ margin: '0 0 6px', color: 'var(--text)', fontWeight: 600 }}>Delete file?</p>
+            <p style={{ margin: '0 0 20px', color: 'var(--text-2)', fontSize: '12px', wordBreak: 'break-all' }}>{confirmDelete}</p>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => doDelete(confirmDelete)}>Delete</button>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {context.length > 0 && (
         <div className="context-tray">
           <span className="context-tray-label">📎</span>
