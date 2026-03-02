@@ -189,24 +189,55 @@ function UsagePanel({ agentId }: { agentId: string }) {
         </div>
       )}
 
-      {/* Daily sparkline (last 7 days) */}
-      {daily.length > 1 && (
-        <div>
-          <div style={{ color: '#888', fontSize: '11px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last {Math.min(daily.length, 7)} Days</div>
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'flex-end', height: '48px', background: '#2a2a2a', borderRadius: '8px', padding: '8px' }}>
-            {daily.slice(-7).map((d: any, i: number) => {
-              const maxCost = Math.max(...daily.slice(-7).map((x: any) => x.totalCost || 0), 0.001)
-              const h = Math.max(4, ((d.totalCost || 0) / maxCost) * 32)
-              return (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                  <div style={{ width: '100%', height: `${h}px`, background: d.totalCost > 0 ? '#4a9eff' : '#333', borderRadius: '3px 3px 0 0' }} />
-                  <div style={{ color: '#555', fontSize: '9px' }}>{d.date?.slice(5)}</div>
-                </div>
-              )
-            })}
+      {/* Daily bar chart (last 7 days) */}
+      {daily.length > 1 && (() => {
+        const slice = daily.slice(-7)
+        const maxCost = Math.max(...slice.map((x: any) => x.totalCost || 0), 0.001)
+        return (
+          <div>
+            <div style={{ color: '#888', fontSize: '11px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Last {slice.length} Days
+            </div>
+            <div style={{ background: '#2a2a2a', borderRadius: '10px', padding: '12px 12px 8px' }}>
+              {/* Bars */}
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end', height: '56px', marginBottom: '6px' }}>
+                {slice.map((d: any, i: number) => {
+                  const pct = (d.totalCost || 0) / maxCost
+                  const barH = Math.max(pct > 0 ? 6 : 2, pct * 56)
+                  const isToday = d.date === today.date
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '56px' }}>
+                      <div style={{
+                        width: '100%',
+                        height: `${barH}px`,
+                        background: isToday ? '#4a9eff' : pct > 0 ? '#2d6aad' : '#333',
+                        borderRadius: '4px 4px 0 0',
+                        transition: 'height 0.3s ease'
+                      }} />
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Labels */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {slice.map((d: any, i: number) => (
+                  <div key={i} style={{ flex: 1, textAlign: 'center', color: d.date === today.date ? '#4a9eff' : '#555', fontSize: '10px' }}>
+                    {d.date?.slice(5).replace('-', '/')}
+                  </div>
+                ))}
+              </div>
+              {/* Cost labels */}
+              <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+                {slice.map((d: any, i: number) => (
+                  <div key={i} style={{ flex: 1, textAlign: 'center', color: '#666', fontSize: '9px' }}>
+                    {d.totalCost > 0 ? `$${d.totalCost.toFixed(2)}` : ''}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Provider rate limits */}
       {providers.some(p => p.windows?.length > 0) && (
