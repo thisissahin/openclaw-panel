@@ -6,22 +6,30 @@ A mobile-optimized developer control panel for [OpenClaw](https://github.com/ope
 
 ## Features
 
-- **Dashboard** — Real-time agent status, model info, and token usage across all auto-discovered agents.
-- **File Browser** — Browse and edit any workspace file inline. Your `memory/` folder is accessible here too.
-- **Terminal (PTY)** — Full interactive bash terminal streamed via `node-pty`. Supports multiple persistent tabs — tabs survive page refresh, app close, and tab switches. Terminal state is never lost when navigating between panel sections.
-- **Live Logs** — Real-time JSONL session stream (user messages, AI replies, tool calls) accessible via the log icon inside the Terminal tab. Last 200 entries are replayed from DB on reconnect so you never miss context.
+- **Dashboard** — Real-time agent status, model info, and token usage. Click any agent card to open its detail view.
+- **Agent Detail** — Per-agent deep-dive with three panels:
+  - **Session** — Context window usage bar, model info, Compact and Reset actions
+  - **Usage & Cost** — Token/cost stats with a 7-day bar chart and per-provider rate-limit gauges
+  - **Cron Jobs** — Full CRUD for scheduled agent tasks. Schedule builder with "Every X" interval mode or "At a time" time picker with weekday toggles. Edit opens the full form pre-filled.
+- **File Browser** — Browse, read, edit, and delete workspace files inline. Add files to context and chat with the agent about them.
+- **Terminal (PTY)** — Full interactive bash terminal streamed via `node-pty`. Multiple persistent tabs that survive page refresh and app close.
+- **Live Logs** — Real-time JSONL session stream (user messages, AI replies, tool calls, system events). Last 200 entries replayed from DB on reconnect.
 - **Skill Manager** — Toggle OpenClaw skills on/off without touching config files.
 - **Actions** — One-tap buttons for gateway restart, update, disk/memory stats, and tunnel status.
-- **Login Screen** — Token-based auth with a clean setup screen on first visit. No hardcoded credentials.
-- **SQLite state** — Terminal tabs and log history are persisted to `~/.openclaw/panel/panel.db`.
+- **Token-based auth** — Auto-generated token on first run, clean login screen.
+- **SQLite state** — Terminal tabs and log history persisted to `~/.openclaw/panel/panel.db`.
 
 ---
 
 ## Tech Stack
 
-- **Frontend:** React, Vite, TypeScript, Xterm.js, Lucide Icons
-- **Backend:** Node.js, Express, WebSockets (`ws`), `node-pty`, `better-sqlite3`
-- **Integration:** Telegram WebApp SDK
+| Layer | Stack |
+|---|---|
+| Frontend | React, Vite, TypeScript, Lucide Icons |
+| Terminal | Xterm.js, node-pty |
+| Backend | Node.js, Express, WebSockets (`ws`) |
+| Storage | better-sqlite3 |
+| Integration | Telegram WebApp SDK |
 
 ---
 
@@ -47,52 +55,33 @@ npm run build
 node server.js
 ```
 
-The panel runs on port `3001` by default. Override with:
+Panel runs on port `3001` by default. Override with `PANEL_PORT=8080`.
 
-```bash
-PANEL_PORT=8080 node server.js
-```
+On first run a random token is auto-generated and saved to `~/.openclaw/panel/.token`. It's printed in the server logs — paste it into the login screen.
 
-On first run, a random token is auto-generated and saved to:
-
-```
-~/.openclaw/panel/.token
-```
-
-You'll see it printed in the server logs. Paste it into the login screen when you first open the panel.
-
-To use a fixed token instead:
+To use a fixed token:
 
 ```bash
 PANEL_TOKEN=your-secret-token node server.js
 ```
 
-### 4. Expose it to the internet (Cloudflare Tunnel)
+### 4. Expose via HTTPS (Cloudflare Tunnel)
 
-Telegram Mini Apps require HTTPS. The easiest option is a free Cloudflare tunnel — no account needed:
+Telegram Mini Apps require HTTPS. The simplest option:
 
 ```bash
-# Install cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
 cloudflared tunnel --url http://localhost:3001
 ```
 
-Cloudflare prints a URL like:
+Cloudflare prints a URL like `https://something.trycloudflare.com` — that's your panel URL.
 
-```
-https://something-random.trycloudflare.com
-```
-
-That's your panel URL. Open it in a browser and log in with your token.
-
-> **Note:** The free tunnel URL changes on every restart. For a permanent URL, set up a named tunnel with a custom domain.
+> The free tunnel URL changes on every restart. For a permanent URL, use a named tunnel with a custom domain.
 
 ---
 
 ## Running as a system service
 
-To keep the panel alive in the background:
-
-```bash
+```ini
 # /etc/systemd/system/openclaw-panel.service
 [Unit]
 Description=OpenClaw Panel
@@ -108,8 +97,6 @@ Environment=PANEL_TOKEN=your-secret-token
 WantedBy=multi-user.target
 ```
 
-Enable and start:
-
 ```bash
 systemctl daemon-reload
 systemctl enable --now openclaw-panel.service
@@ -117,14 +104,12 @@ systemctl enable --now openclaw-panel.service
 
 ---
 
-## Connecting to your Telegram Bot (Menu Button)
+## Telegram Menu Button
 
-Set the panel as the **menu button** on your Telegram bot so it opens in one tap.
-
-### For a specific chat (your DM with the bot)
+Set the panel as your bot's menu button so it opens in one tap.
 
 ```bash
-curl -s -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setChatMenuButton" \
+curl -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setChatMenuButton" \
   -H "Content-Type: application/json" \
   -d '{
     "chat_id": "<YOUR_CHAT_ID>",
@@ -136,29 +121,15 @@ curl -s -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setChatMenuButton" \
   }'
 ```
 
-### As the default for all chats
+Omit `chat_id` to set it as the default for all chats.
 
-```bash
-curl -s -X POST "https://api.telegram.org/bot<BOT_TOKEN>/setChatMenuButton" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "menu_button": {
-      "type": "web_app",
-      "text": "Panel",
-      "web_app": { "url": "https://your-panel-url.trycloudflare.com" }
-    }
-  }'
-```
-
-A button appears next to the message input in your bot chat. Tapping it opens the panel as a Mini App inside Telegram.
-
-> Find your Chat ID by messaging [@userinfobot](https://t.me/userinfobot) on Telegram.
+> Find your Chat ID: message [@userinfobot](https://t.me/userinfobot) on Telegram.
 
 ---
 
 ## Agent discovery
 
-The panel auto-discovers agents by scanning `~/.openclaw/agents/`. Each subdirectory is an agent. Names and emojis are read from the agent's `IDENTITY.md` (if present), with `🤖` and the directory name as fallbacks.
+The panel auto-discovers agents by scanning `~/.openclaw/agents/`. Names and emojis are read from each agent's `IDENTITY.md`, with `🤖` and the directory name as fallbacks.
 
 ```bash
 OPENCLAW_HOME=/custom/path node server.js
@@ -171,8 +142,14 @@ OPENCLAW_HOME=/custom/path node server.js
 | Variable | Default | Description |
 |---|---|---|
 | `PANEL_PORT` | `3001` | Port the server listens on |
-| `PANEL_TOKEN` | *(auto-generated)* | Auth token — auto-generated and saved to `~/.openclaw/panel/.token` on first run |
+| `PANEL_TOKEN` | *(auto-generated)* | Auth token, saved to `~/.openclaw/panel/.token` on first run |
 | `OPENCLAW_HOME` | `~/.openclaw` | Path to OpenClaw home directory |
+
+---
+
+## Patch Notes
+
+See [PATCH_NOTES.md](./PATCH_NOTES.md) for full changelog.
 
 ---
 
