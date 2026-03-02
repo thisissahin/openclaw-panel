@@ -77,12 +77,13 @@ export default function Files({ toast, isActive }: { toast: (m: string) => void;
   }
 
   const doDelete = async (path: string) => {
+    setConfirmDelete(null)
     try {
-      await deleteFile(path)
-      toast(`Deleted ✅`)
-      setConfirmDelete(null)
+      const r = await deleteFile(path)
+      if (r && !r.ok) throw new Error(r.error || 'Delete failed')
       if (viewing?.name === path) { setViewing(null); setEditing(false) }
-      loadDir(currentPath)
+      await loadDir(currentPath)
+      toast(`Deleted ✅`)
     } catch (e: any) { toast(`Delete failed: ${e.message}`) }
   }
 
