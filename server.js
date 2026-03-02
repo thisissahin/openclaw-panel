@@ -11,6 +11,7 @@ import os from 'os';
 import pty from 'node-pty';
 import { SkillManager } from './core/skill-manager.js';
 import { tabs as dbTabs, logs as dbLogs, buffers as dbBuffers, MAX_BUFFER } from './core/db.js';
+import { WebSocket } from 'ws';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PANEL_PORT || 3001;
@@ -284,6 +285,71 @@ app.post('/api/action', (req, res) => {
     res.json({ ok: true, output });
   } catch (e) {
     res.json({ ok: false, error: String(e), output: e.stdout?.toString() || '' });
+  }
+});
+
+// ── Gateway WS helper ─────────────────────────────────────────
+function gatewayCall(method, params) {
+  return new Promise((resolve, reject) => {
+    try {
+      const cfg = readConfig();
+      const gwPort = cfg?.gateway?.port || 18789;
+      const gwToken = cfg?.gateway?.auth?.token || '';
+      const ws = new WebSocket(`ws://localhost:${gwPort}/`);
+      const timeout = setTimeout(() => { ws.close(); reject(new Error('timeout')); }, 6000);
+      let id = 1;
+
+      ws.on('message', (d) => {
+        const m = JSON.parse(d);
+        if (m.event === 'connect.challenge') {
+          ws.send(JSON.stringify({
+            type: 'req', id: String(id++), method: 'connect', params: {
+              minProtocol: 3, maxProtocol: 3,
+              client: { id: 'cli', version: '1.0.0', platform: 'linux', mode: 'cli' },
+              role: 'operator',
+              scopes: ['operator.read', 'operator.write', 'operator.admin'],
+              caps: [], commands: [], permissions: {},
+              auth: { token: gwToken }
+            }
+          }));
+        }
+        if (m.type === 'res' && m.id === '1') {
+          if (!m.ok) { clearTimeout(timeout); ws.close(); return reject(new Error(m.error?.message || 'connect failed')); }
+          ws.send(JSON.stringify({ type: 'req', id: '2', method, params }));
+        }
+        if (m.type === 'res' && m.id === '2') {
+          clearTimeout(timeout);
+          ws.close();
+          if (m.ok) resolve(m.payload);
+          else reject(new Error(m.error?.message || 'call failed'));
+        }
+      });
+      ws.on('error', (e) => { clearTimeout(timeout); reject(e); });
+    } catch (e) { reject(e); }
+  });
+}
+
+// ── Sessions API ──────────────────────────────────────────────
+app.get('/api/sessions', async (req, res) => {
+  try {
+    const result = await gatewayCall('sessions.list', {});
+    res.json({ ok: true, sessions: result?.sessions || [] });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.patch('/api/sessions/:key/model', async (req, res) => {
+  try {
+    const { model } = req.body;
+    if (!model) return res.status(400).json({ error: 'model required' });
+    const result = await gatewayCall('sessions.patch', {
+      key: decodeURIComponent(req.params.key),
+      model
+    });
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
   }
 });
 

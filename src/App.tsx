@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LayoutDashboard, FolderOpen, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Boxes, LogOut, ScrollText, Plus, ChevronDown, RotateCcw, Zap } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab, getConfig, patchConfig, restartGateway } from './api'
+import { getAgents, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab, getConfig, patchConfig, restartGateway, getSessions, patchSessionModel } from './api'
 import './App.css'
 
 type Tab = 'dashboard' | 'files' | 'skills' | 'terminal' | 'settings'
@@ -233,6 +233,7 @@ function ModelSelect({ value, onChange }: { value: string; onChange: (v: string)
 
 function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout: () => void }) {
   const [cfg, setCfg] = useState<any>(null)
+  const [sessions, setSessions] = useState<any[]>([])
   const [output, setOutput] = useState<{ label: string; text: string } | null>(null)
   const [running, setRunning] = useState<string | null>(null)
   const [panelUrl, setPanelUrl] = useState(localStorage.getItem('gatewayUrl') || '')
@@ -240,6 +241,7 @@ function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout
 
   useEffect(() => {
     getConfig().then(r => { if (r.ok) setCfg(r.config) }).catch(() => {})
+    getSessions().then(r => { if (r.ok) setSessions(r.sessions || []) }).catch(() => {})
   }, [])
 
   const patch = async (path: string, value: unknown, label?: string) => {
@@ -284,6 +286,23 @@ function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout
   const tg = cfg?.channels?.telegram
   const defaultModel = defaults?.model?.primary || ''
 
+  // Find live session key for an agent id
+  const sessionForAgent = (agentId: string) =>
+    sessions.find(s => s.key?.startsWith(`agent:${agentId}:`) && s.kind === 'direct' && !s.key?.includes('slash'))
+
+  const setAgentModel = async (agentId: string, idx: number, model: string) => {
+    // 1. Write to config
+    await patch(`agents.list.${idx}.model`, model, `${agentId} model`)
+    // 2. Patch live session immediately
+    const session = sessionForAgent(agentId)
+    if (session) {
+      try {
+        await patchSessionModel(session.key, model)
+        toast(`${agentId} switched to ${model.split('/')[1]} live ✅`)
+      } catch { toast(`Config saved, session update failed — restart to apply`) }
+    }
+  }
+
   return (
     <div style={{ overflowY: 'auto', height: '100%', paddingTop: '12px', paddingBottom: '32px' }}>
 
@@ -292,21 +311,20 @@ function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout
         <Section title="Agents — Active Model">
           {agentList.map((agent: any, i: number) => {
             const hasOverride = !!agent.model
+            const liveSession = sessionForAgent(agent.id)
+            const liveModel = liveSession ? `${liveSession.modelProvider}/${liveSession.model}` : null
             const activeModel = agent.model || defaultModel
             return (
               <Row
                 key={agent.id}
                 label={agent.name || agent.id}
-                hint={hasOverride ? '⚡ Override set' : `↩ Using default`}
+                hint={liveModel ? `● Live: ${liveModel.split('/')[1]}` : hasOverride ? '⚡ Override set' : '↩ Using default'}
                 last={i === agentList.length - 1}
               >
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                   <ModelSelect
-                    value={activeModel}
-                    onChange={v => {
-                      const idx = agentList.findIndex((a: any) => a.id === agent.id)
-                      patch(`agents.list.${idx}.model`, v, `${agent.id} model`)
-                    }}
+                    value={liveModel || activeModel}
+                    onChange={v => setAgentModel(agent.id, i, v)}
                   />
                   {hasOverride && (
                     <button

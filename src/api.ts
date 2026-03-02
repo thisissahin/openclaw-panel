@@ -62,6 +62,11 @@ export const getConfig = () => req('/api/config');
 export const patchConfig = (path: string, value: unknown) => req('/api/config', 'PATCH', { path, value });
 export const restartGateway = () => req('/api/config/restart', 'POST');
 
+// Sessions (live model switching)
+export const getSessions = () => req('/api/sessions');
+export const patchSessionModel = (key: string, model: string) =>
+  req(`/api/sessions/${encodeURIComponent(key)}/model`, 'PATCH', { model });
+
 // Terminal tabs (DB-backed)
 export const getTabs = () => req('/api/tabs');
 export const saveTab = (id: string, name: string) => req('/api/tabs', 'POST', { id, name });
