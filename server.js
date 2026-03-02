@@ -392,7 +392,7 @@ app.patch('/api/config', (req, res) => {
     else obj[keys[keys.length - 1]] = value;
 
     writeConfig(cfg);
-    res.json({ ok: true });
+    res.json({ ok: true, config: cfg }); // Return fresh config
   } catch (e) {
     res.json({ ok: false, error: String(e) });
   }

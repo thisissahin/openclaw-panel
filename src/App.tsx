@@ -248,7 +248,8 @@ function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout
     try {
       const r = await patchConfig(path, value)
       if (r.ok) {
-        setCfg((prev: any) => {
+        if (r.config) setCfg(r.config) // Sync from server response
+        else setCfg((prev: any) => {
           const next = JSON.parse(JSON.stringify(prev))
           const keys = path.split('.')
           let obj = next
@@ -298,6 +299,9 @@ function SettingsTab({ toast, onLogout }: { toast: (m: string) => void; onLogout
     if (session) {
       try {
         await patchSessionModel(session.key, model)
+        // Refresh session list to show new live model
+        const sres = await getSessions()
+        if (sres.ok) setSessions(sres.sessions || [])
         toast(`${agentId} switched to ${model.split('/')[1]} live ✅`)
       } catch { toast(`Config saved, session update failed — restart to apply`) }
     }
