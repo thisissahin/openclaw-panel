@@ -353,6 +353,74 @@ app.patch('/api/sessions/:key/model', async (req, res) => {
   }
 });
 
+app.post('/api/sessions/:key/compact', async (req, res) => {
+  try {
+    const result = await gatewayCall('sessions.compact', { key: decodeURIComponent(req.params.key) });
+    res.json({ ok: true, result });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+app.post('/api/sessions/:key/reset', async (req, res) => {
+  try {
+    const result = await gatewayCall('sessions.reset', { key: decodeURIComponent(req.params.key) });
+    res.json({ ok: true, result });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+// ── Usage API ─────────────────────────────────────────────────
+app.get('/api/usage', async (req, res) => {
+  try {
+    const [status, cost] = await Promise.all([
+      gatewayCall('usage.status', {}),
+      gatewayCall('usage.cost', {})
+    ]);
+    res.json({ ok: true, status, cost });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+// ── Cron API ──────────────────────────────────────────────────
+app.get('/api/cron', async (req, res) => {
+  try {
+    const result = await gatewayCall('cron.list', {});
+    res.json({ ok: true, jobs: result?.jobs || result || [] });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+app.post('/api/cron/:id/run', async (req, res) => {
+  try {
+    const result = await gatewayCall('cron.run', { jobId: req.params.id });
+    res.json({ ok: true, result });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+app.patch('/api/cron/:id', async (req, res) => {
+  try {
+    const result = await gatewayCall('cron.update', { jobId: req.params.id, patch: req.body });
+    res.json({ ok: true, result });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+app.delete('/api/cron/:id', async (req, res) => {
+  try {
+    const result = await gatewayCall('cron.remove', { jobId: req.params.id });
+    res.json({ ok: true, result });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+app.get('/api/cron/:id/runs', async (req, res) => {
+  try {
+    const result = await gatewayCall('cron.runs', { jobId: req.params.id });
+    res.json({ ok: true, runs: result?.runs || result || [] });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
+app.post('/api/cron', async (req, res) => {
+  try {
+    const result = await gatewayCall('cron.add', { job: req.body });
+    res.json({ ok: true, result });
+  } catch (e) { res.json({ ok: false, error: String(e) }); }
+});
+
 // ── OpenClaw Config ───────────────────────────────────────────
 const CONFIG_PATH = join(OPENCLAW_HOME, 'openclaw.json');
 

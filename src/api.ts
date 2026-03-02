@@ -62,10 +62,25 @@ export const getConfig = () => req('/api/config');
 export const patchConfig = (path: string, value: unknown) => req('/api/config', 'PATCH', { path, value });
 export const restartGateway = () => req('/api/config/restart', 'POST');
 
-// Sessions (live model switching)
+// Sessions (live model switching + management)
 export const getSessions = () => req('/api/sessions');
 export const patchSessionModel = (key: string, model: string) =>
   req(`/api/sessions/${encodeURIComponent(key)}/model`, 'PATCH', { model });
+export const compactSession = (key: string) =>
+  req(`/api/sessions/${encodeURIComponent(key)}/compact`, 'POST');
+export const resetSession = (key: string) =>
+  req(`/api/sessions/${encodeURIComponent(key)}/reset`, 'POST');
+
+// Usage & cost
+export const getUsage = () => req('/api/usage');
+
+// Cron jobs
+export const getCronJobs = () => req('/api/cron');
+export const runCronJob = (id: string) => req(`/api/cron/${id}/run`, 'POST');
+export const updateCronJob = (id: string, patch: object) => req(`/api/cron/${id}`, 'PATCH', patch);
+export const deleteCronJob = (id: string) => req(`/api/cron/${id}`, 'DELETE');
+export const getCronRuns = (id: string) => req(`/api/cron/${id}/runs`);
+export const createCronJob = (job: object) => req('/api/cron', 'POST', job);
 
 // Terminal tabs (DB-backed)
 export const getTabs = () => req('/api/tabs');

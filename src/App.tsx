@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LayoutDashboard, FolderOpen, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Boxes, LogOut, ScrollText, Plus, ChevronDown, RotateCcw, Zap } from 'lucide-react'
 import Files from './Files'
+import AgentDetail from './AgentDetail'
 import { getAgents, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab, getConfig, patchConfig, restartGateway, getSessions, patchSessionModel } from './api'
 import './App.css'
 
@@ -86,7 +87,7 @@ function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
 }
 
 // ─── Dashboard ───────────────────────────────────────────────
-function Dashboard() {
+function Dashboard({ onSelectAgent, toast }: { onSelectAgent: (a: any) => void; toast: (m: string) => void }) {
   const [agents, setAgents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -111,7 +112,7 @@ function Dashboard() {
 
       <div className="agent-grid">
         {agents.map(a => (
-          <div key={a.id} className="agent-card">
+          <div key={a.id} className="agent-card" onClick={() => onSelectAgent(a)} style={{ cursor: 'pointer' }}>
             <div className="agent-emoji">{a.emoji}</div>
             <div className="agent-name">{a.name}</div>
             <div className={`agent-status ${a.online ? 'online' : 'offline'}`}>
@@ -683,6 +684,7 @@ function TerminalTabs() {
 export default function App() {
   const [authed, setAuthed] = useState(isAuthenticated())
   const [tab, setTab] = useState<Tab>('dashboard')
+  const [selectedAgent, setSelectedAgent] = useState<any>(null)
   const [toastMsg, setToastMsg] = useState('')
 
   const toast = (m: string) => setToastMsg(m)
@@ -700,8 +702,15 @@ export default function App() {
         <span className="app-title">🤖 OpenClaw Panel</span>
       </header>
       <main className="app-main no-scroll" style={{ position: 'relative' }}>
-        <div style={{ display: tab === 'dashboard' ? 'block' : 'none', height: '100%', overflowY: 'auto' }}>
-          <Dashboard />
+        <div style={{ display: tab === 'dashboard' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
+          <div style={{ display: selectedAgent ? 'none' : 'block', height: '100%', overflowY: 'auto' }}>
+            <Dashboard onSelectAgent={setSelectedAgent} toast={toast} />
+          </div>
+          {selectedAgent && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
+              <AgentDetail agent={selectedAgent} onBack={() => setSelectedAgent(null)} toast={toast} />
+            </div>
+          )}
         </div>
         <div style={{ display: tab === 'files' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
           <Files toast={toast} isActive={tab === 'files'} />
