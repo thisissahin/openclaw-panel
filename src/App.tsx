@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes, LogOut } from 'lucide-react'
+import { LayoutDashboard, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes, LogOut, ScrollText } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab } from './api'
+import { getAgents, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping, getTabs, saveTab, deleteTab } from './api'
 import './App.css'
 
-type Tab = 'dashboard' | 'memory' | 'files' | 'skills' | 'actions' | 'logs'
+type Tab = 'dashboard' | 'files' | 'skills' | 'actions' | 'terminal'
 
 // ─── Login ───────────────────────────────────────────────────
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
@@ -126,68 +126,7 @@ function Dashboard() {
   )
 }
 
-// ─── Memory ──────────────────────────────────────────────────
-function Memory({ toast }: { toast: (m: string) => void }) {
-  const [files, setFiles] = useState<string[]>([])
-  const [viewing, setViewing] = useState<{ name: string; content: string } | null>(null)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    listMemory()
-      .then(r => setFiles(r.files || []))
-      .catch(e => toast(`Error: ${e.message}`))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const open = async (name: string) => {
-    try {
-      const r = await readMemory(name)
-      setViewing({ name, content: r.content || '' })
-      setDraft(r.content || '')
-      setEditing(false)
-    } catch (e: any) { toast(`Error: ${e.message}`) }
-  }
-
-  const save = async () => {
-    if (!viewing) return
-    try {
-      await writeMemory(viewing.name, draft)
-      toast('Saved ✅')
-      setViewing({ ...viewing, content: draft })
-      setEditing(false)
-    } catch (e: any) { toast(`Save failed: ${e.message}`) }
-  }
-
-  if (viewing) return (
-    <div className="file-view">
-      <div className="file-view-header">
-        <button className="icon-btn" onClick={() => setViewing(null)}><X size={18} /></button>
-        <span className="file-view-title">{viewing.name}</span>
-        {!editing
-          ? <button className="icon-btn" onClick={() => setEditing(true)}><Edit3 size={18} /></button>
-          : <button className="icon-btn ok" onClick={save}><Save size={18} /></button>
-        }
-      </div>
-      {editing
-        ? <textarea className="file-editor" value={draft} onChange={e => setDraft(e.target.value)} />
-        : <pre className="file-pre">{viewing.content}</pre>
-      }
-    </div>
-  )
-
-  return (
-    <div className="tab-content">
-      {loading && <div className="center-msg">Loading...</div>}
-      {files.map(f => (
-        <button key={f} className="list-item" onClick={() => open(f)}>
-          <span>📄</span><span>{f}</span>
-        </button>
-      ))}
-    </div>
-  )
-}
 
 // ─── Skills ──────────────────────────────────────────────────
 function Skills({ toast }: { toast: (m: string) => void }) {
@@ -291,11 +230,84 @@ function Actions({ toast }: { toast: (m: string) => void }) {
 
 import TerminalView from './TerminalView'
 
+// ─── Log Panel (embedded) ─────────────────────────────────────
+type LogEntry = { type: 'user' | 'assistant' | 'tool' | 'result' | 'system' | 'error'; time: string; text: string }
+
+function LogPanel() {
+  const [entries, setEntries] = useState<LogEntry[]>([])
+  const [paused, setPaused] = useState(false)
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const pausedRef = useRef(false)
+  const urlParams = new URLSearchParams(window.location.search)
+  const agentId = urlParams.get('agent') || 'main'
+
+  useEffect(() => { pausedRef.current = paused }, [paused])
+
+  useEffect(() => {
+    const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '')
+    const token = localStorage.getItem('token') || ''
+    const ws = new WebSocket(`${base}/ws/logs?token=${token}&agent=${agentId}`)
+    ws.onopen = () => setStatus('connected')
+    ws.onclose = () => setStatus('disconnected')
+    ws.onerror = () => setStatus('disconnected')
+    ws.onmessage = (e) => {
+      if (pausedRef.current) return
+      try { setEntries(prev => [...prev.slice(-500), JSON.parse(e.data)]) } catch {}
+    }
+    return () => ws.close()
+  }, [agentId])
+
+  useEffect(() => {
+    if (!paused) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [entries, paused])
+
+  const colorClass = (type: LogEntry['type']) => {
+    switch (type) {
+      case 'user': return 'log-user'
+      case 'assistant': return 'log-assistant'
+      case 'tool': return 'log-tool'
+      case 'result': return 'log-result'
+      case 'system': return 'log-system'
+      case 'error': return 'log-error'
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg)' }}>
+      <div className="logs-toolbar" style={{ flexShrink: 0 }}>
+        <span className={`log-status log-status--${status}`}>
+          {status === 'connected' ? '● Live' : status === 'connecting' ? '○ Connecting…' : '✕ Off'}
+        </span>
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button className="icon-btn" title={paused ? 'Resume' : 'Pause'} onClick={() => setPaused(p => !p)}>
+            {paused ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
+          </button>
+          <button className="icon-btn" title="Clear" onClick={() => setEntries([])}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="logs-body" style={{ flex: 1, overflowY: 'auto' }}>
+        {entries.length === 0 && <div className="logs-empty">Waiting for activity…</div>}
+        {entries.map((e, i) => (
+          <div key={i} className={`log-line ${colorClass(e.type)}`}>
+            <span className="log-time">{e.time}</span>
+            <span className="log-text">{e.text}</span>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  )
+}
+
 // ─── Terminal Tabs ───────────────────────────────────────────
-function TerminalTabs({ onBack }: { onBack: () => void }) {
+function TerminalTabs() {
   const [tabs, setTabs] = useState<{id: string, name: string}[]>([]);
   const [activeTab, setActiveTab] = useState<string>('');
   const [loaded, setLoaded] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
 
   // Load tabs from DB on mount
   useEffect(() => {
@@ -339,7 +351,7 @@ function TerminalTabs({ onBack }: { onBack: () => void }) {
     if (e) e.stopPropagation();
     deleteTab(id).then(() => {
       const newTabs = tabs.filter(t => t.id !== id);
-      if (newTabs.length === 0) { onBack(); return; }
+      if (newTabs.length === 0) { addTab(); return; }
       setTabs(newTabs);
       if (activeTab === id) setActiveTab(newTabs[newTabs.length - 1].id);
     });
@@ -352,143 +364,65 @@ function TerminalTabs({ onBack }: { onBack: () => void }) {
   );
 
   return (
-    <div className="logs-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div className="logs-toolbar" style={{ justifyContent: 'space-between', padding: '0', borderBottom: '1px solid #333', background: '#222' }}>
-        <div style={{ display: 'flex', flex: 1, overflowX: 'auto', alignItems: 'flex-end', paddingTop: '4px' }}>
-          <button className="icon-btn" onClick={onBack} style={{ margin: '4px 8px', padding: '4px' }} title="Back to Logs">
-            &larr;
-          </button>
-          
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', background: '#222', borderBottom: '1px solid #333', paddingTop: '4px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', flex: 1, overflowX: 'auto', alignItems: 'flex-end' }}>
           {tabs.map(t => (
-            <div key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding: '6px 12px',
-              background: activeTab === t.id ? '#1e1e1e' : '#333',
-              color: activeTab === t.id ? '#fff' : '#aaa',
+            <div key={t.id} onClick={() => { setActiveTab(t.id); setShowLogs(false); }} style={{
+              padding: '6px 10px',
+              background: activeTab === t.id && !showLogs ? '#1e1e1e' : '#2a2a2a',
+              color: activeTab === t.id && !showLogs ? '#fff' : '#888',
               borderTopLeftRadius: '6px',
               borderTopRightRadius: '6px',
               border: '1px solid #444',
-              borderBottom: activeTab === t.id ? 'none' : '1px solid #444',
+              borderBottom: activeTab === t.id && !showLogs ? 'none' : '1px solid #444',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: '6px',
               fontSize: '12px',
               marginRight: '2px',
               marginBottom: '-1px',
-              zIndex: activeTab === t.id ? 1 : 0,
+              whiteSpace: 'nowrap',
+              zIndex: activeTab === t.id && !showLogs ? 1 : 0,
               position: 'relative'
             }}>
               {t.name}
-              <button className="icon-btn" onClick={(e) => closeTab(t.id, e)} style={{ padding: '2px', color: 'inherit' }}>
-                <X size={12} />
+              <button className="icon-btn" onClick={(e) => closeTab(t.id, e)} style={{ padding: '1px', color: 'inherit', lineHeight: 1 }}>
+                <X size={11} />
               </button>
             </div>
           ))}
-          <button className="icon-btn" onClick={addTab} style={{ margin: '4px', padding: '4px' }}>+</button>
+          <button className="icon-btn" onClick={addTab} style={{ padding: '4px 8px', margin: '0 2px', fontSize: '16px', lineHeight: 1 }}>+</button>
         </div>
+        {/* Logs toggle */}
+        <button
+          className="icon-btn"
+          onClick={() => setShowLogs(l => !l)}
+          title="Logs"
+          style={{ padding: '6px 10px', marginBottom: '0', color: showLogs ? 'var(--accent, #7c9ef8)' : 'var(--hint)', borderBottom: showLogs ? '2px solid var(--accent, #7c9ef8)' : '2px solid transparent', borderRadius: 0, flexShrink: 0 }}
+        >
+          <ScrollText size={16} />
+        </button>
       </div>
-      <div style={{ flex: 1, position: 'relative', background: '#1e1e1e' }}>
-        {tabs.map(t => (
-          <div key={t.id} style={{ display: activeTab === t.id ? 'block' : 'none', height: '100%' }}>
-            <TerminalView tabId={t.id} />
-          </div>
-        ))}
+
+      {/* Content */}
+      <div style={{ flex: 1, position: 'relative', background: '#1e1e1e', overflow: 'hidden' }}>
+        {showLogs
+          ? <LogPanel />
+          : tabs.map(t => (
+            <div key={t.id} style={{ display: activeTab === t.id ? 'block' : 'none', height: '100%' }}>
+              <TerminalView tabId={t.id} />
+            </div>
+          ))
+        }
       </div>
     </div>
   );
 }
 
-// ─── Logs ────────────────────────────────────────────────────
-type LogEntry = { type: 'user' | 'assistant' | 'tool' | 'result' | 'system' | 'error'; time: string; text: string }
 
-function Logs() {
-  const [mode, setMode] = useState<'system' | 'terminal'>('system')
-  const [entries, setEntries] = useState<LogEntry[]>([])
-  const [paused, setPaused] = useState(false)
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const pausedRef = useRef(false)
-  const wsRef = useRef<WebSocket | null>(null)
-  const urlParams = new URLSearchParams(window.location.search)
-  const agentId = urlParams.get('agent') || 'main'
-
-  useEffect(() => {
-    pausedRef.current = paused
-  }, [paused])
-
-  useEffect(() => {
-    if (mode === 'terminal') return;
-    const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '')
-    const token = localStorage.getItem('token') || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae'
-    const url = `${base}/ws/logs?token=${token}&agent=${agentId}`
-    const ws = new WebSocket(url)
-    wsRef.current = ws
-
-    ws.onopen = () => setStatus('connected')
-    ws.onclose = () => setStatus('disconnected')
-    ws.onerror = () => setStatus('disconnected')
-    ws.onmessage = (e) => {
-      if (pausedRef.current) return
-      try {
-        const entry: LogEntry = JSON.parse(e.data)
-        setEntries(prev => [...prev.slice(-500), entry])
-      } catch {}
-    }
-    return () => ws.close()
-  }, [agentId, mode])
-
-  useEffect(() => {
-    if (!paused && mode === 'system') bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [entries, paused, mode])
-
-  const colorClass = (type: LogEntry['type']) => {
-    switch (type) {
-      case 'user': return 'log-user'
-      case 'assistant': return 'log-assistant'
-      case 'tool': return 'log-tool'
-      case 'result': return 'log-result'
-      case 'system': return 'log-system'
-      case 'error': return 'log-error'
-    }
-  }
-
-  if (mode === 'terminal') {
-    return <TerminalTabs onBack={() => setMode('system')} />;
-  }
-
-  return (
-    <div className="logs-container">
-      <div className="logs-toolbar">
-        <span className={`log-status log-status--${status}`}>
-          {status === 'connected' ? '● Live' : status === 'connecting' ? '○ Connecting…' : '✕ Disconnected'}
-        </span>
-        <div className="logs-toolbar-actions" style={{ display: 'flex', alignItems: 'center' }}>
-          <button onClick={() => setMode('terminal')} style={{ padding: '4px 12px', fontSize: '12px', marginRight: '8px', background: '#333', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>
-            Open Terminal
-          </button>
-          <button className="icon-btn" title={paused ? 'Resume' : 'Pause'} onClick={() => setPaused(p => !p)}>
-            {paused ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
-          </button>
-          <button className="icon-btn" title="Clear" onClick={() => setEntries([])}>
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="logs-body">
-        {entries.length === 0 && (
-          <div className="logs-empty">Waiting for activity…</div>
-        )}
-        {entries.map((e, i) => (
-          <div key={i} className={`log-line ${colorClass(e.type)}`}>
-            <span className="log-time">{e.time}</span>
-            <span className="log-text">{e.text}</span>
-          </div>
-        ))}
-        <div ref={bottomRef} />
-      </div>
-    </div>
-  )
-}
 
 // ─── Settings ────────────────────────────────────────────────
 function SettingsPanel({ onClose, toast }: { onClose: () => void; toast: (m: string) => void }) {
@@ -549,22 +483,20 @@ export default function App() {
           <button className="icon-btn" onClick={handleLogout} title="Logout"><LogOut size={18} /></button>
         </div>
       </header>
-      <main className={`app-main ${(tab === 'logs' || tab === 'files' || tab === 'skills') ? 'no-scroll' : ''}`}>
+      <main className={`app-main ${(tab === 'terminal' || tab === 'files' || tab === 'skills') ? 'no-scroll' : ''}`}>
         {tab === 'dashboard' && <Dashboard />}
-        {tab === 'memory' && <Memory toast={toast} />}
         {tab === 'files' && <Files toast={toast} />}
         {tab === 'skills' && <Skills toast={toast} />}
         {tab === 'actions' && <Actions toast={toast} />}
-        {tab === 'logs' && <Logs />}
+        {tab === 'terminal' && <TerminalTabs />}
       </main>
       <nav className="bottom-nav">
         {([
           { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: 'Dashboard' },
-          { id: 'memory', icon: <Brain size={20} />, label: 'Memory' },
           { id: 'files', icon: <FolderOpen size={20} />, label: 'Files' },
           { id: 'skills', icon: <Boxes size={20} />, label: 'Skills' },
           { id: 'actions', icon: <Zap size={20} />, label: 'Actions' },
-          { id: 'logs', icon: <Terminal size={20} />, label: 'Logs' },
+          { id: 'terminal', icon: <Terminal size={20} />, label: 'Terminal' },
         ] as const).map(t => (
           <button key={t.id} className={`nav-btn ${tab === t.id ? 'active' : ''}`} onClick={() => setTab(t.id)}>
             {t.icon}<span>{t.label}</span>
