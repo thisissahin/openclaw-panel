@@ -420,14 +420,18 @@ function TerminalTabs() {
 
       {/* Content */}
       <div style={{ flex: 1, position: 'relative', background: '#1e1e1e', overflow: 'hidden' }}>
-        {showLogs
-          ? <LogPanel />
-          : tabs.map(t => (
+        {/* Terminals — always mounted, hidden when logs visible */}
+        <div style={{ display: showLogs ? 'none' : 'block', height: '100%' }}>
+          {tabs.map(t => (
             <div key={t.id} style={{ display: activeTab === t.id ? 'block' : 'none', height: '100%' }}>
               <TerminalView tabId={t.id} />
             </div>
-          ))
-        }
+          ))}
+        </div>
+        {/* Log panel — always mounted, hidden when terminal visible */}
+        <div style={{ display: showLogs ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+          <LogPanel />
+        </div>
       </div>
     </div>
   );
