@@ -56,11 +56,16 @@ export default function TerminalView({ tabId }: { tabId: string }) {
   useEffect(() => {
     if (!terminalRef.current) return;
     
+    const isMobile = window.innerWidth < 600;
     const term = new XTerm({
       cursorBlink: true,
       theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: window.innerWidth < 600 ? 12 : 14
+      fontSize: isMobile ? 12 : 14,
+      scrollback: 2000,
+      scrollSensitivity: isMobile ? 2 : 1,
+      fastScrollSensitivity: 5,
+      smoothScrollDuration: 0,   // disable smooth scroll — causes jank on mobile
     });
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -94,7 +99,7 @@ export default function TerminalView({ tabId }: { tabId: string }) {
   }, [tabId]);
 
   return (
-    <div className="terminal-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="terminal-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', touchAction: 'none' } as React.CSSProperties}>
       <div className="terminal-toolbar" style={{ display: 'flex', gap: '6px', padding: '6px 8px', borderBottom: '1px solid #333', alignItems: 'center' }}>
         {status !== 'connected' && (
           <button onClick={connect} style={{ padding: '4px 12px', fontSize: '12px', background: '#333', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>
@@ -108,9 +113,18 @@ export default function TerminalView({ tabId }: { tabId: string }) {
           ⌨️
         </button>
       </div>
-      <div 
-        ref={terminalRef} 
-        style={{ flex: 1, overflow: 'hidden', padding: '4px', background: '#1e1e1e' }} 
+      <div
+        ref={terminalRef}
+        style={{
+          flex: 1,
+          overflow: 'hidden',
+          padding: 0,
+          background: '#1e1e1e',
+          // Give xterm full touch control — prevents browser scroll fighting xterm scroll
+          touchAction: 'none',
+          WebkitOverflowScrolling: 'auto',
+          overscrollBehavior: 'none',
+        } as React.CSSProperties}
         onClick={() => xtermRef.current?.focus()}
       />
     </div>
