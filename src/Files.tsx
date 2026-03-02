@@ -4,7 +4,7 @@ import { listFiles, readFile, writeFile, sendChat } from './api'
 
 type CtxFile = { name: string; content: string }
 
-export default function Files({ toast }: { toast: (m: string) => void }) {
+export default function Files({ toast, isActive }: { toast: (m: string) => void; isActive?: boolean }) {
   const [entries, setEntries] = useState<{ name: string; isDir: boolean }[]>([])
   const [currentPath, setCurrentPath] = useState('')
   const [viewing, setViewing] = useState<{ name: string; content: string } | null>(null)
@@ -26,6 +26,11 @@ export default function Files({ toast }: { toast: (m: string) => void }) {
   }, [toast])
 
   useEffect(() => { loadDir('') }, [])
+
+  // Refresh file list whenever the tab becomes active
+  useEffect(() => {
+    if (isActive && !viewing) loadDir(currentPath)
+  }, [isActive])
 
   const open = async (entry: { name: string; isDir: boolean }) => {
     const full = currentPath ? `${currentPath}/${entry.name}` : entry.name
