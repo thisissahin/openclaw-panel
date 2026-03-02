@@ -1,10 +1,83 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes } from 'lucide-react'
+import { LayoutDashboard, Brain, FolderOpen, Zap, Settings, X, RefreshCw, Save, Edit3, Terminal, Trash2, PauseCircle, PlayCircle, Paperclip, Boxes, LogOut } from 'lucide-react'
 import Files from './Files'
-import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill } from './api'
+import { getAgents, listMemory, readMemory, writeMemory, listFiles, readFile, writeFile, runAction, getSettings, saveSettings, apiBase, getSkills, toggleSkill, isAuthenticated, logout, ping } from './api'
 import './App.css'
 
 type Tab = 'dashboard' | 'memory' | 'files' | 'skills' | 'actions' | 'logs'
+
+// ─── Login ───────────────────────────────────────────────────
+function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [url, setUrl] = useState(localStorage.getItem('gatewayUrl') || '')
+  const [token, setToken] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const handleLogin = async () => {
+    if (!token.trim()) { setError('Enter your panel token'); return }
+    setLoading(true)
+    setError('')
+    try {
+      if (url) localStorage.setItem('gatewayUrl', url)
+      else localStorage.removeItem('gatewayUrl')
+      localStorage.setItem('token', token.trim())
+      // Verify token works
+      const r = await fetch(`${url || ''}/api/agents`, {
+        headers: { 'Authorization': `Bearer ${token.trim()}` }
+      })
+      if (r.status === 401) throw new Error('Invalid token')
+      onLogin()
+    } catch (e: any) {
+      localStorage.removeItem('token')
+      setError(e.message === 'Invalid token' ? 'Invalid token — check and try again' : 'Cannot reach panel server')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100dvh', padding: '32px 24px', background: 'var(--bg)', gap: '24px' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '48px', marginBottom: '12px' }}>🤖</div>
+        <div style={{ fontSize: '20px', fontWeight: 700 }}>OpenClaw Panel</div>
+        <div style={{ fontSize: '13px', color: 'var(--hint)', marginTop: '6px' }}>Enter your panel token to continue</div>
+      </div>
+      <div style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div>
+          <label style={{ fontSize: '12px', color: 'var(--hint)', display: 'block', marginBottom: '4px' }}>Server URL (optional, leave blank if same origin)</label>
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            placeholder="https://your-server.com"
+            style={{ width: '100%', padding: '10px 12px', background: 'var(--secondary-bg)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--text)', fontSize: '16px', outline: 'none' }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: '12px', color: 'var(--hint)', display: 'block', marginBottom: '4px' }}>Panel Token</label>
+          <input
+            value={token}
+            onChange={e => setToken(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            placeholder="Paste your token here"
+            type="password"
+            style={{ width: '100%', padding: '10px 12px', background: 'var(--secondary-bg)', border: '1px solid var(--border)', borderRadius: '10px', color: 'var(--text)', fontSize: '16px', outline: 'none' }}
+          />
+          <div style={{ fontSize: '11px', color: 'var(--hint)', marginTop: '4px' }}>
+            Find your token in <code style={{ background: 'rgba(255,255,255,0.08)', padding: '1px 4px', borderRadius: '3px' }}>~/.openclaw/panel/.token</code>
+          </div>
+        </div>
+        {error && <div style={{ fontSize: '13px', color: '#f87171', padding: '8px 12px', background: 'rgba(248,113,113,0.1)', borderRadius: '8px' }}>{error}</div>}
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          style={{ padding: '12px', background: 'var(--btn)', color: 'var(--btn-text)', border: 'none', borderRadius: '12px', fontSize: '15px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1, marginTop: '4px' }}
+        >
+          {loading ? 'Connecting…' : 'Connect'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Toast ───────────────────────────────────────────────────
 function Toast({ msg, onDone }: { msg: string; onDone: () => void }) {
@@ -216,10 +289,84 @@ function Actions({ toast }: { toast: (m: string) => void }) {
   )
 }
 
+import TerminalView from './TerminalView'
+
+// ─── Terminal Tabs ───────────────────────────────────────────
+function TerminalTabs({ onBack }: { onBack: () => void }) {
+  const [tabs, setTabs] = useState<{id: string, name: string}[]>([{ id: Date.now().toString(), name: 'Term 1' }]);
+  const [activeTab, setActiveTab] = useState(tabs[0].id);
+
+  const addTab = () => {
+    const id = Date.now().toString();
+    setTabs([...tabs, { id, name: `Term ${tabs.length + 1}` }]);
+    setActiveTab(id);
+  };
+
+  const closeTab = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const newTabs = tabs.filter(t => t.id !== id);
+    if (newTabs.length === 0) {
+      onBack();
+      return;
+    }
+    setTabs(newTabs);
+    if (activeTab === id) {
+      setActiveTab(newTabs[newTabs.length - 1].id);
+    }
+  };
+
+  return (
+    <div className="logs-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="logs-toolbar" style={{ justifyContent: 'space-between', padding: '0', borderBottom: '1px solid #333', background: '#222' }}>
+        <div style={{ display: 'flex', flex: 1, overflowX: 'auto', alignItems: 'flex-end', paddingTop: '4px' }}>
+          <button className="icon-btn" onClick={onBack} style={{ margin: '4px 8px', padding: '4px' }} title="Back to Logs">
+            &larr;
+          </button>
+          
+          {tabs.map(t => (
+            <div key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: '6px 12px',
+              background: activeTab === t.id ? '#1e1e1e' : '#333',
+              color: activeTab === t.id ? '#fff' : '#aaa',
+              borderTopLeftRadius: '6px',
+              borderTopRightRadius: '6px',
+              border: '1px solid #444',
+              borderBottom: activeTab === t.id ? 'none' : '1px solid #444',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              marginRight: '2px',
+              marginBottom: '-1px',
+              zIndex: activeTab === t.id ? 1 : 0,
+              position: 'relative'
+            }}>
+              {t.name}
+              <button className="icon-btn" onClick={(e) => closeTab(t.id, e)} style={{ padding: '2px', color: 'inherit' }}>
+                <X size={12} />
+              </button>
+            </div>
+          ))}
+          <button className="icon-btn" onClick={addTab} style={{ margin: '4px', padding: '4px' }}>+</button>
+        </div>
+      </div>
+      <div style={{ flex: 1, position: 'relative', background: '#1e1e1e' }}>
+        {tabs.map(t => (
+          <div key={t.id} style={{ display: activeTab === t.id ? 'block' : 'none', height: '100%' }}>
+            <TerminalView tabId={t.id} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Logs ────────────────────────────────────────────────────
 type LogEntry = { type: 'user' | 'assistant' | 'tool' | 'result' | 'system' | 'error'; time: string; text: string }
 
 function Logs() {
+  const [mode, setMode] = useState<'system' | 'terminal'>('system')
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [paused, setPaused] = useState(false)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
@@ -234,6 +381,7 @@ function Logs() {
   }, [paused])
 
   useEffect(() => {
+    if (mode === 'terminal') return;
     const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '')
     const token = localStorage.getItem('token') || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae'
     const url = `${base}/ws/logs?token=${token}&agent=${agentId}`
@@ -251,11 +399,11 @@ function Logs() {
       } catch {}
     }
     return () => ws.close()
-  }, [agentId])
+  }, [agentId, mode])
 
   useEffect(() => {
-    if (!paused) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [entries, paused])
+    if (!paused && mode === 'system') bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [entries, paused, mode])
 
   const colorClass = (type: LogEntry['type']) => {
     switch (type) {
@@ -268,13 +416,20 @@ function Logs() {
     }
   }
 
+  if (mode === 'terminal') {
+    return <TerminalTabs onBack={() => setMode('system')} />;
+  }
+
   return (
     <div className="logs-container">
       <div className="logs-toolbar">
         <span className={`log-status log-status--${status}`}>
           {status === 'connected' ? '● Live' : status === 'connecting' ? '○ Connecting…' : '✕ Disconnected'}
         </span>
-        <div className="logs-toolbar-actions">
+        <div className="logs-toolbar-actions" style={{ display: 'flex', alignItems: 'center' }}>
+          <button onClick={() => setMode('terminal')} style={{ padding: '4px 12px', fontSize: '12px', marginRight: '8px', background: '#333', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>
+            Open Terminal
+          </button>
           <button className="icon-btn" title={paused ? 'Resume' : 'Pause'} onClick={() => setPaused(p => !p)}>
             {paused ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
           </button>
@@ -326,6 +481,7 @@ function SettingsPanel({ onClose, toast }: { onClose: () => void; toast: (m: str
 
 // ─── App ─────────────────────────────────────────────────────
 export default function App() {
+  const [authed, setAuthed] = useState(isAuthenticated())
   const [tab, setTab] = useState<Tab>('dashboard')
   const [showSettings, setShowSettings] = useState(false)
   const [toastMsg, setToastMsg] = useState('')
@@ -337,20 +493,24 @@ export default function App() {
     if (tg) { 
       tg.ready(); 
       tg.expand();
-      
-      // Attempt to request fullscreen if supported (Bot API 8.0+)
-      if (tg.requestFullscreen) {
-        tg.requestFullscreen();
-      }
+      if (tg.requestFullscreen) tg.requestFullscreen();
     }
   }, [])
+
+  if (!authed) return <LoginScreen onLogin={() => setAuthed(true)} />
+
+  const handleLogout = () => {
+    logout()
+    setAuthed(false)
+  }
 
   return (
     <div className="app">
       <header className="app-header">
-        <span className="app-title">🌙 OpenClaw Panel</span>
-        <div className="header-right">
+        <span className="app-title">🤖 OpenClaw Panel</span>
+        <div className="header-right" style={{ display: 'flex', gap: '4px' }}>
           <button className="icon-btn" onClick={() => setShowSettings(true)}><Settings size={18} /></button>
+          <button className="icon-btn" onClick={handleLogout} title="Logout"><LogOut size={18} /></button>
         </div>
       </header>
       <main className={`app-main ${(tab === 'logs' || tab === 'files' || tab === 'skills') ? 'no-scroll' : ''}`}>

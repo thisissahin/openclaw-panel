@@ -1,7 +1,7 @@
 export function getSettings() {
   return {
     gatewayUrl: localStorage.getItem('gatewayUrl') || '',
-    token: localStorage.getItem('token') || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae',
+    token: localStorage.getItem('token') || '',
   };
 }
 
@@ -10,14 +10,21 @@ export function saveSettings(gatewayUrl: string, token: string) {
   localStorage.setItem('token', token);
 }
 
-// The panel API is served from the same origin
+export function isAuthenticated() {
+  return !!localStorage.getItem('token');
+}
+
+export function logout() {
+  localStorage.removeItem('token');
+}
+
 export function apiBase() {
   const custom = localStorage.getItem('gatewayUrl');
   return custom || '';
 }
 
 async function req(path: string, method = 'GET', body?: unknown) {
-  const token = localStorage.getItem('token') || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae';
+  const token = localStorage.getItem('token') || '';
   const urlParams = new URLSearchParams(window.location.search);
   const agentId = urlParams.get('agent') || 'main';
 
@@ -31,10 +38,12 @@ async function req(path: string, method = 'GET', body?: unknown) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
+  if (res.status === 401) throw new Error('UNAUTHORIZED');
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
 
+export const ping = () => fetch(`${apiBase()}/api/ping`).then(r => r.json());
 export const getAgents = () => req('/api/agents');
 export const listMemory = () => req('/api/memory/list');
 export const readMemory = (file: string) => req(`/api/memory/read?file=${encodeURIComponent(file)}`);
@@ -45,6 +54,5 @@ export const writeFile = (path: string, content: string) => req('/api/files/writ
 export const sendChat = (message: string, contextFiles: { name: string; content: string }[]) =>
   req('/api/chat/send', 'POST', { message, contextFiles });
 export const runAction = (action: string) => req('/api/action', 'POST', { action });
-
 export const getSkills = () => req('/api/skills');
 export const toggleSkill = (name: string, enabled: boolean) => req('/api/skills/toggle', 'POST', { name, enabled });

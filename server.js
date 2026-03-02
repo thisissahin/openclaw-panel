@@ -1,31 +1,93 @@
 import express from 'express';
 import cors from 'cors';
-import { readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, watchFile, unwatchFile } from 'fs';
 import { execSync, spawn } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { randomBytes } from 'crypto';
+import os from 'os';
+import pty from 'node-pty';
 import { SkillManager } from './core/skill-manager.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TOKEN = process.env.PANEL_TOKEN || 'decd6097769042335d4a219057655758f5a9f9d2ff16cfae';
-const PORT = 3001;
+const PORT = process.env.PANEL_PORT || 3001;
 
+// ── OpenClaw home detection ───────────────────────────────────
+const OPENCLAW_HOME = process.env.OPENCLAW_HOME ||
+  join(os.homedir(), '.openclaw');
+
+// ── Token management ─────────────────────────────────────────
+// Use PANEL_TOKEN env var, or auto-generate and persist on first run.
+const TOKEN_FILE = join(OPENCLAW_HOME, 'panel', '.token');
+function loadOrCreateToken() {
+  if (process.env.PANEL_TOKEN) return process.env.PANEL_TOKEN;
+  try {
+    if (existsSync(TOKEN_FILE)) {
+      return readFileSync(TOKEN_FILE, 'utf-8').trim();
+    }
+  } catch {}
+  const token = randomBytes(24).toString('hex');
+  try {
+    mkdirSync(join(OPENCLAW_HOME, 'panel'), { recursive: true });
+    writeFileSync(TOKEN_FILE, token, 'utf-8');
+    console.log(`\n🔑 Panel token generated. Add to your app:\n   Token: ${token}\n   Or set PANEL_TOKEN env var.\n`);
+  } catch (e) {
+    console.warn('Could not persist token:', e.message);
+  }
+  return token;
+}
+const TOKEN = loadOrCreateToken();
+
+// ── Agent discovery ───────────────────────────────────────────
+const AGENTS_DIR = join(OPENCLAW_HOME, 'agents');
+
+function discoverAgents() {
+  try {
+    return readdirSync(AGENTS_DIR).filter(name => {
+      try { return statSync(join(AGENTS_DIR, name)).isDirectory(); } catch { return false; }
+    });
+  } catch { return []; }
+}
+
+function parseIdentity(agentId) {
+  // Try to read IDENTITY.md from the agent's workspace
+  const ws = getAgentWorkspace(agentId);
+  try {
+    const content = readFileSync(join(ws, 'IDENTITY.md'), 'utf-8');
+    const name = content.match(/\*\*Name:\*\*\s*(.+)/)?.[1]?.trim() || agentId;
+    const emoji = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '🤖';
+    return { name, emoji };
+  } catch {}
+  return { name: agentId, emoji: '🤖' };
+}
+
+function getAgentWorkspace(agentId) {
+  // Convention: main agent → ~/.openclaw/workspace
+  //             others     → ~/.openclaw/workspace-<agentId>
+  if (agentId === 'main') return join(OPENCLAW_HOME, 'workspace');
+  return join(OPENCLAW_HOME, `workspace-${agentId}`);
+}
+
+// ── Express app ───────────────────────────────────────────────
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Dynamic workspace based on agent ID header
+// Workspace for a request (from X-Agent-Id header)
 function getWorkspace(req) {
   const agentId = req.headers['x-agent-id'] || 'main';
-  return agentId === 'office' ? '/root/.openclaw/workspace-office' : '/root/.openclaw/workspace';
+  return getAgentWorkspace(agentId);
 }
 
 // Serve static panel files
 app.use(express.static(join(__dirname, 'dist')));
 
-// Auth
+// Public endpoint: lets the frontend check reachability and version
+app.get('/api/ping', (_, res) => res.json({ ok: true, version: '1.0.0' }));
+
+// Auth middleware
 app.use('/api', (req, res, next) => {
   const auth = req.headers.authorization || '';
   if (auth !== `Bearer ${TOKEN}`) return res.status(401).json({ error: 'Unauthorized' });
@@ -34,23 +96,25 @@ app.use('/api', (req, res, next) => {
 
 // ── Agent/Session status ──────────────────────────────────────
 app.get('/api/agents', (req, res) => {
-  const agents = ['main', 'office'].map(id => {
+  const agentIds = discoverAgents();
+  const agents = agentIds.map(id => {
+    const { name, emoji } = parseIdentity(id);
     try {
-      const sessFile = `/root/.openclaw/agents/${id}/sessions/sessions.json`;
+      const sessFile = join(AGENTS_DIR, id, 'sessions', 'sessions.json');
       const data = JSON.parse(readFileSync(sessFile, 'utf-8'));
       const key = `agent:${id}:main`;
       const sess = data[key] || {};
       return {
         id,
-        name: id === 'main' ? 'Dolores' : 'Dwight',
-        emoji: id === 'main' ? '🌙' : '🏦',
+        name,
+        emoji,
         model: sess.model || '—',
         online: !!sess.model,
         tokens: sess.totalTokens || 0,
         updatedAt: sess.updatedAt || null,
       };
     } catch {
-      return { id, name: id === 'main' ? 'Dolores' : 'Dwight', emoji: id === 'main' ? '🌙' : '🏦', online: false, model: '—' };
+      return { id, name, emoji, online: false, model: '—' };
     }
   });
   res.json({ ok: true, agents });
@@ -62,7 +126,7 @@ app.get('/api/memory/list', (req, res) => {
     const WORKSPACE = getWorkspace(req);
     const files = ['MEMORY.md'];
     try {
-      const daily = readdirSync(`${WORKSPACE}/memory`).filter(f => f.endsWith('.md'));
+      const daily = readdirSync(join(WORKSPACE, 'memory')).filter(f => f.endsWith('.md'));
       files.push(...daily.map(f => `memory/${f}`));
     } catch {}
     res.json({ ok: true, files });
@@ -76,7 +140,7 @@ app.get('/api/memory/read', (req, res) => {
     const WORKSPACE = getWorkspace(req);
     const file = req.query.file;
     if (!file || file.includes('..')) return res.status(400).json({ error: 'Invalid path' });
-    const content = readFileSync(`${WORKSPACE}/${file}`, 'utf-8');
+    const content = readFileSync(join(WORKSPACE, file), 'utf-8');
     res.json({ ok: true, content });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
@@ -88,7 +152,7 @@ app.post('/api/memory/write', (req, res) => {
     const WORKSPACE = getWorkspace(req);
     const { file, content } = req.body;
     if (!file || file.includes('..')) return res.status(400).json({ error: 'Invalid path' });
-    writeFileSync(`${WORKSPACE}/${file}`, content, 'utf-8');
+    writeFileSync(join(WORKSPACE, file), content, 'utf-8');
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
@@ -100,10 +164,10 @@ app.get('/api/files/list', (req, res) => {
   try {
     const WORKSPACE = getWorkspace(req);
     const rel = (req.query.path || '').replace(/\.\./g, '');
-    const dir = rel ? `${WORKSPACE}/${rel}` : WORKSPACE;
+    const dir = rel ? join(WORKSPACE, rel) : WORKSPACE;
     const entries = readdirSync(dir).map(name => {
       try {
-        const isDir = statSync(`${dir}/${name}`).isDirectory();
+        const isDir = statSync(join(dir, name)).isDirectory();
         return { name, isDir };
       } catch { return { name, isDir: false }; }
     });
@@ -118,7 +182,7 @@ app.get('/api/files/read', (req, res) => {
     const WORKSPACE = getWorkspace(req);
     const rel = (req.query.path || '').replace(/\.\./g, '');
     if (!rel) return res.status(400).json({ error: 'No path' });
-    const content = readFileSync(`${WORKSPACE}/${rel}`, 'utf-8');
+    const content = readFileSync(join(WORKSPACE, rel), 'utf-8');
     res.json({ ok: true, content: content.slice(0, 50000) });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
@@ -130,7 +194,7 @@ app.post('/api/files/write', (req, res) => {
     const WORKSPACE = getWorkspace(req);
     const { path: rel, content } = req.body;
     if (!rel || rel.includes('..')) return res.status(400).json({ error: 'Invalid path' });
-    writeFileSync(`${WORKSPACE}/${rel}`, content, 'utf-8');
+    writeFileSync(join(WORKSPACE, rel), content, 'utf-8');
     res.json({ ok: true });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
@@ -141,6 +205,7 @@ app.post('/api/files/write', (req, res) => {
 app.post('/api/chat/send', (req, res) => {
   try {
     const { message, contextFiles } = req.body;
+    const agentId = req.headers['x-agent-id'] || 'main';
 
     let fullMessage = '';
     if (contextFiles && contextFiles.length > 0) {
@@ -149,25 +214,17 @@ app.post('/api/chat/send', (req, res) => {
       }
     }
     fullMessage += message || '';
-
     if (!fullMessage.trim()) return res.status(400).json({ error: 'Empty message' });
 
-    // Fire and forget — reply comes back via Telegram
-    const spawnArgs = ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram', '--agent', 'main'];
+    const spawnArgs = ['agent', '--message', fullMessage, '--deliver', '--channel', 'telegram', '--agent', agentId];
+    if (agentId !== 'main') spawnArgs.push('--account', agentId);
+
     const proc = spawn('openclaw', spawnArgs, {
-        detached: true,
-        stdio: ['ignore', 'ignore', 'ignore'],
-        env: { ...process.env, HOME: '/root', PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, HOME: os.homedir(), PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
     });
     proc.unref();
-
-    // Echo the sent message to Telegram immediately so the user sees what was dispatched
-    const echoMessage = `📤 *Panel Dispatch*\n${contextFiles?.length ? `📎 Files: ${contextFiles.map(f => f.name).join(', ')}\n` : ''}\n${message || ''}`;
-    spawn('openclaw', ['message', 'send', '--target', '858433700', '--message', echoMessage, '--channel', 'telegram'], {
-        detached: true,
-        stdio: ['ignore', 'ignore', 'ignore'],
-        env: { ...process.env, HOME: '/root', PATH: process.env.PATH || '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' }
-    }).unref();
 
     res.json({ ok: true, queued: true });
   } catch (e) {
@@ -178,11 +235,11 @@ app.post('/api/chat/send', (req, res) => {
 // ── Actions ───────────────────────────────────────────────────
 const SAFE_ACTIONS = {
   restart: () => execSync('openclaw gateway restart', { timeout: 10000 }).toString(),
-  update: () => execSync('openclaw gateway update', { timeout: 120000 }).toString(),
-  df: () => execSync('df -h /', { timeout: 5000 }).toString(),
-  free: () => execSync('free -h', { timeout: 5000 }).toString(),
-  status: () => execSync('openclaw gateway status', { timeout: 10000 }).toString(),
-  tunnel: () => execSync('systemctl is-active openclaw-tunnel.service openclaw-panel-tunnel.service', { timeout: 5000 }).toString(),
+  update:  () => execSync('openclaw gateway update',  { timeout: 120000 }).toString(),
+  df:      () => execSync('df -h /',                  { timeout: 5000 }).toString(),
+  free:    () => execSync('free -h',                  { timeout: 5000 }).toString(),
+  status:  () => execSync('openclaw gateway status',  { timeout: 10000 }).toString(),
+  tunnel:  () => execSync('systemctl is-active openclaw-tunnel.service openclaw-panel-tunnel.service', { timeout: 5000 }).toString(),
 };
 
 app.post('/api/action', (req, res) => {
@@ -222,21 +279,87 @@ app.get('/{*path}', (_, res) => res.sendFile(join(__dirname, 'dist', 'index.html
 
 // ── HTTP + WebSocket server ───────────────────────────────────
 const server = createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws/logs' });
+const wssLogs = new WebSocketServer({ noServer: true });
+const wssTerminal = new WebSocketServer({ noServer: true });
 
-// Find the most recent active session JSONL for an agent
+server.on('upgrade', (request, socket, head) => {
+  const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  if (pathname === '/ws/logs') {
+    wssLogs.handleUpgrade(request, socket, head, (ws) => wssLogs.emit('connection', ws, request));
+  } else if (pathname === '/ws/terminal') {
+    wssTerminal.handleUpgrade(request, socket, head, (ws) => wssTerminal.emit('connection', ws, request));
+  } else {
+    socket.destroy();
+  }
+});
+
+// ── PTY Terminal WebSocket ─────────────────────────────────────
+const ptySessions = new Map();
+
+wssTerminal.on('connection', (ws, req) => {
+  const params = new URLSearchParams(req.url.replace('/ws/terminal?', ''));
+  const token = params.get('token');
+  const tabId = params.get('tabId') || 'default';
+
+  if (token !== TOKEN) { ws.close(4001, 'Unauthorized'); return; }
+
+  let ptyProcess = ptySessions.get(tabId);
+
+  if (!ptyProcess) {
+    const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
+    ptyProcess = pty.spawn(shell, [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 24,
+      cwd: getAgentWorkspace('main'),
+      env: process.env
+    });
+    ptySessions.set(tabId, ptyProcess);
+
+    ptyProcess.onData((data) => {
+      wssTerminal.clients.forEach(client => {
+        if (client.readyState === 1 && client.tabId === tabId) {
+          client.send(JSON.stringify({ data }));
+        }
+      });
+    });
+
+    ptyProcess.onExit(() => {
+      ptySessions.delete(tabId);
+      wssTerminal.clients.forEach(client => {
+        if (client.readyState === 1 && client.tabId === tabId) {
+          client.send(JSON.stringify({ data: '\r\n[Process Exited]\r\n' }));
+          client.close();
+        }
+      });
+    });
+  }
+
+  ws.tabId = tabId;
+
+  ws.on('message', (msg) => {
+    try {
+      const payload = JSON.parse(msg);
+      if (payload.action === 'write' && payload.data) ptyProcess.write(payload.data);
+      else if (payload.action === 'resize') ptyProcess.resize(payload.cols, payload.rows);
+    } catch {}
+  });
+
+  // PTY persists across reconnects — don't kill on ws close
+});
+
+// ── Logs WebSocket ────────────────────────────────────────────
 function getActiveSessionFile(agentId) {
-  const dir = `/root/.openclaw/agents/${agentId}/sessions`;
+  const dir = join(AGENTS_DIR, agentId, 'sessions');
   try {
     const files = readdirSync(dir)
       .filter(f => f.endsWith('.jsonl') && !f.includes('.reset.'))
-      .map(f => ({ f, mtime: statSync(`${dir}/${f}`).mtime.getTime() }))
+      .map(f => ({ f, mtime: statSync(join(dir, f)).mtime.getTime() }))
       .sort((a, b) => b.mtime - a.mtime);
-    return files.length ? `${dir}/${files[0].f}` : null;
+    return files.length ? join(dir, files[0].f) : null;
   } catch { return null; }
 }
 
-// Format a JSONL log entry into a human-readable line
 function formatEntry(raw) {
   try {
     const entry = JSON.parse(raw);
@@ -255,9 +378,8 @@ function formatEntry(raw) {
       const lines = [];
       const content = Array.isArray(msg.content) ? msg.content : [];
       for (const c of content) {
-        if (c.type === 'text' && c.text?.trim()) {
-          lines.push({ type: 'assistant', time, text: `🌙 ${c.text.slice(0, 300)}` });
-        }
+        if (c.type === 'text' && c.text?.trim())
+          lines.push({ type: 'assistant', time, text: `🤖 ${c.text.slice(0, 300)}` });
         if (c.type === 'tool_use') {
           const args = JSON.stringify(c.input || {}).slice(0, 150);
           lines.push({ type: 'tool', time, text: `🔧 ${c.name}(${args})` });
@@ -276,7 +398,7 @@ function formatEntry(raw) {
   return null;
 }
 
-wss.on('connection', (ws, req) => {
+wssLogs.on('connection', (ws, req) => {
   const params = new URLSearchParams(req.url.replace('/ws/logs?', ''));
   const token = params.get('token');
   const agentId = params.get('agent') || 'main';
@@ -286,9 +408,7 @@ wss.on('connection', (ws, req) => {
   const send = (entry) => {
     if (ws.readyState !== 1) return;
     const entries = Array.isArray(entry) ? entry : [entry];
-    for (const e of entries) {
-      if (e) ws.send(JSON.stringify(e));
-    }
+    for (const e of entries) if (e) ws.send(JSON.stringify(e));
   };
 
   send({ type: 'system', time: new Date().toLocaleTimeString('en', { hour12: false }), text: `📡 Connected — watching agent:${agentId}` });
@@ -314,12 +434,11 @@ wss.on('connection', (ws, req) => {
     if (watchedFile) unwatchFile(watchedFile);
     watchedFile = filePath;
     fileOffset = 0;
-    readNewLines(filePath); // send existing lines on connect
+    readNewLines(filePath);
     watchFile(filePath, { interval: 500 }, () => readNewLines(filePath));
     send({ type: 'system', time: new Date().toLocaleTimeString('en', { hour12: false }), text: `📂 ${filePath.split('/').pop()}` });
   };
 
-  // Start watching — poll for new session files every 5s
   const startFile = getActiveSessionFile(agentId);
   if (startFile) watchSession(startFile);
 
@@ -334,4 +453,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => console.log(`OpenClaw Panel on :${PORT}`));
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`OpenClaw Panel running on :${PORT}`);
+  console.log(`OpenClaw home: ${OPENCLAW_HOME}`);
+});
