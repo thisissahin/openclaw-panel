@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PauseCircle, PlayCircle, Trash2 } from 'lucide-react'
 import { apiBase } from '../../api'
 
@@ -14,7 +14,6 @@ export default function LogPanel() {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const containerRef = useRef<HTMLDivElement>(null)
   const pausedRef = useRef(false)
-  const initialScrollDone = useRef(false)
   const urlParams = new URLSearchParams(window.location.search)
   const agentId = urlParams.get('agent') || 'main'
 
@@ -46,26 +45,13 @@ export default function LogPanel() {
     return () => socket.close()
   }, [agentId])
 
-  const scrollToBottom = (smooth = false) => {
+  // useLayoutEffect fires after DOM is updated but before paint —
+  // guarantees the container has full height before we scroll
+  useLayoutEffect(() => {
+    if (paused) return
     const el = containerRef.current
     if (!el) return
-    if (smooth) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
-    } else {
-      el.scrollTop = el.scrollHeight
-    }
-  }
-
-  useEffect(() => {
-    if (paused) return
-    if (!initialScrollDone.current) {
-      setTimeout(() => {
-        scrollToBottom(false)
-        initialScrollDone.current = true
-      }, 30)
-    } else {
-      scrollToBottom(true)
-    }
+    el.scrollTop = el.scrollHeight
   }, [entries, paused])
 
   const colorClass = (type: LogEntry['type']) => {
