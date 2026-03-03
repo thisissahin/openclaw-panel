@@ -1,19 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import 'xterm/css/xterm.css';
 import { apiBase } from './api';
 
-export default function TerminalView({ tabId }: { tabId: string }) {
+export type TerminalViewHandle = {
+  sendData: (data: string) => void;
+};
+
+const KEYS = [
+  { label: '↑', data: '\x1b[A' },
+  { label: '↓', data: '\x1b[B' },
+  { label: '←', data: '\x1b[D' },
+  { label: '→', data: '\x1b[C' },
+  { label: 'Tab', data: '\t' },
+  { label: 'Ctrl+C', data: '\x03' },
+  { label: 'Ctrl+D', data: '\x04' },
+];
+
+const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId }, ref) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
 
+  const sendData = (data: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: 'write', data }));
+    }
+    xtermRef.current?.focus();
+  };
+
+  useImperativeHandle(ref, () => ({ sendData }));
+
   const connect = () => {
     if (wsRef.current) wsRef.current.close();
-    
     setStatus('connecting');
     const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '');
     const token = localStorage.getItem('token') || '';
@@ -24,14 +46,11 @@ export default function TerminalView({ tabId }: { tabId: string }) {
     ws.onopen = () => {
       setStatus('connected');
       if (xtermRef.current && fitAddonRef.current) {
-        // Send initial size
         const dims = fitAddonRef.current.proposeDimensions();
-        if (dims) {
-          ws.send(JSON.stringify({ action: 'resize', cols: dims.cols, rows: dims.rows }));
-        }
+        if (dims) ws.send(JSON.stringify({ action: 'resize', cols: dims.cols, rows: dims.rows }));
       }
     };
-    
+
     ws.onclose = () => setStatus('disconnected');
     ws.onerror = () => setStatus('disconnected');
 
@@ -39,9 +58,7 @@ export default function TerminalView({ tabId }: { tabId: string }) {
       if (typeof e.data === 'string') {
         try {
           const payload = JSON.parse(e.data);
-          if (payload.data) {
-            xtermRef.current?.write(payload.data);
-          }
+          if (payload.data) xtermRef.current?.write(payload.data);
         } catch {
           xtermRef.current?.write(e.data);
         }
@@ -49,13 +66,9 @@ export default function TerminalView({ tabId }: { tabId: string }) {
     };
   };
 
-  const disconnect = () => {
-    if (wsRef.current) wsRef.current.close();
-  };
-
   useEffect(() => {
     if (!terminalRef.current) return;
-    
+
     const isMobile = window.innerWidth < 600;
     const term = new XTerm({
       cursorBlink: true,
@@ -65,7 +78,7 @@ export default function TerminalView({ tabId }: { tabId: string }) {
       scrollback: 2000,
       scrollSensitivity: isMobile ? 2 : 1,
       fastScrollSensitivity: 5,
-      smoothScrollDuration: 0,   // disable smooth scroll — causes jank on mobile
+      smoothScrollDuration: 0,
     });
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -89,7 +102,7 @@ export default function TerminalView({ tabId }: { tabId: string }) {
     });
     resizeObserver.observe(terminalRef.current);
 
-    connect(); // auto connect on load
+    connect();
 
     return () => {
       resizeObserver.disconnect();
@@ -99,8 +112,9 @@ export default function TerminalView({ tabId }: { tabId: string }) {
   }, [tabId]);
 
   return (
-    <div className="terminal-container" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', touchAction: 'none' } as React.CSSProperties}>
-      <div className="terminal-toolbar" style={{ display: 'flex', gap: '6px', padding: '6px 8px', borderBottom: '1px solid #333', alignItems: 'center' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', touchAction: 'none' } as React.CSSProperties}>
+      {/* Status bar */}
+      <div style={{ display: 'flex', gap: '6px', padding: '6px 8px', borderBottom: '1px solid #333', alignItems: 'center', flexShrink: 0 }}>
         {status !== 'connected' && (
           <button onClick={connect} style={{ padding: '4px 12px', fontSize: '12px', background: '#333', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer' }}>
             Connect
@@ -113,6 +127,33 @@ export default function TerminalView({ tabId }: { tabId: string }) {
           ⌨️
         </button>
       </div>
+
+      {/* Mobile key toolbar */}
+      <div style={{ display: 'flex', gap: '4px', padding: '5px 6px', background: '#161616', borderBottom: '1px solid #2a2a2a', flexShrink: 0, overflowX: 'auto' }}>
+        {KEYS.map(({ label, data }) => (
+          <button
+            key={label}
+            onPointerDown={(e) => { e.preventDefault(); sendData(data); }}
+            style={{
+              padding: '5px 10px',
+              fontSize: '12px',
+              fontFamily: 'monospace',
+              background: '#2a2a2a',
+              color: '#ccc',
+              border: '1px solid #3a3a3a',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              userSelect: 'none',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Terminal */}
       <div
         ref={terminalRef}
         style={{
@@ -120,7 +161,6 @@ export default function TerminalView({ tabId }: { tabId: string }) {
           overflow: 'hidden',
           padding: 0,
           background: '#1e1e1e',
-          // Give xterm full touch control — prevents browser scroll fighting xterm scroll
           touchAction: 'none',
           WebkitOverflowScrolling: 'auto',
           overscrollBehavior: 'none',
@@ -129,4 +169,6 @@ export default function TerminalView({ tabId }: { tabId: string }) {
       />
     </div>
   );
-}
+});
+
+export default TerminalView;
