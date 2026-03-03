@@ -2,6 +2,15 @@
 
 ---
 
+## 2026-03-03
+
+- Mobile terminal key toolbar (↑ ↓ ← → Tab Ctrl+C Ctrl+D) above the terminal
+- Fixed terminal garbage output caused by xterm escape query feedback loop
+- Fixed logs always starting at top — now jumps to bottom when tab opens
+- Fixed update button killing the panel (now spawns new process before exiting)
+- Fixed "Update OpenClaw" action broken after v2026.3.2 command rename
+- In-panel update checker: version badge, update banner, one-tap update with auto-reload
+
 ## 2026-03-02
 
 - Full UI redesign — consistent dark design system, proper button styles, clean typography
