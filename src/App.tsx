@@ -23,13 +23,17 @@ export default function App() {
 
   useEffect(() => {
     const telegramApp = (window as any).Telegram?.WebApp
-    if (telegramApp) {
-      telegramApp.ready()
-      telegramApp.expand()
-      if (telegramApp.requestFullscreen) {
-        telegramApp.requestFullscreen()
-      }
-    }
+    if (!telegramApp) return
+
+    // Telegram WebView can be sensitive to fullscreen requests on some devices.
+    // Keep init minimal to avoid black-screen crashes.
+    try { telegramApp.ready?.() } catch {}
+    try { telegramApp.expand?.() } catch {}
+
+    // If we ever want fullscreen again, gate it behind an explicit flag.
+    // if (localStorage.getItem('enableFullscreen') === '1') {
+    //   try { telegramApp.requestFullscreen?.() } catch {}
+    // }
   }, [])
 
   if (!authed) {
@@ -62,27 +66,35 @@ export default function App() {
           )}
         </div>
 
-        <div style={{ display: tab === 'files' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <Files toast={toast} isActive={tab === 'files'} />
-        </div>
+        {tab === 'files' && (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <Files toast={toast} isActive={tab === 'files'} />
+          </div>
+        )}
 
-        <div style={{ display: tab === 'skills' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <SkillsTab toast={toast} />
-        </div>
+        {tab === 'skills' && (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <SkillsTab toast={toast} />
+          </div>
+        )}
 
-        <div style={{ display: tab === 'terminal' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <TerminalTabs />
-        </div>
+        {tab === 'terminal' && (
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <TerminalTabs />
+          </div>
+        )}
 
-        <div style={{ display: tab === 'settings' ? 'block' : 'none', height: '100%' }}>
-          <SettingsTab
-            toast={toast}
-            onLogout={() => {
-              logout()
-              setAuthed(false)
-            }}
-          />
-        </div>
+        {tab === 'settings' && (
+          <div style={{ display: 'block', height: '100%' }}>
+            <SettingsTab
+              toast={toast}
+              onLogout={() => {
+                logout()
+                setAuthed(false)
+              }}
+            />
+          </div>
+        )}
       </main>
 
       <nav className="bottom-nav">
