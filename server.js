@@ -59,7 +59,15 @@ function parseIdentity(agentId) {
   try {
     const content = readFileSync(join(ws, 'IDENTITY.md'), 'utf-8');
     const name = content.match(/\*\*Name:\*\*\s*(.+)/)?.[1]?.trim() || agentId;
-    const emoji = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '🤖';
+    const emojiRaw = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '🤖';
+
+    // IDENTITY.md often includes descriptions like "👾 *(pixel vibe)*".
+    // For UI, keep only the first token/glyph.
+    const emoji = emojiRaw
+      .replace(/[\*_`]/g, '')
+      .trim()
+      .split(/\s+/)[0] || '🤖';
+
     return { name, emoji };
   } catch {}
   return { name: agentId, emoji: '🤖' };
