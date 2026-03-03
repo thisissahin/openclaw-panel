@@ -88,6 +88,15 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
     xtermRef.current = term;
 
     term.onData((data) => {
+      // Filter out xterm's auto-responses to terminal queries — these should
+      // NOT be forwarded to the PTY or they cause a garbage feedback loop.
+      // Cursor position reports: ESC [ <row> ; <col> R
+      if (/^\x1b\[\d+;\d+R$/.test(data)) return;
+      // Device attribute responses: ESC [ ... c
+      if (/^\x1b\[\?[\d;]*c$/.test(data) || /^\x1b\[[\d;]*c$/.test(data)) return;
+      // OSC color responses: ESC ] <n> ; rgb:... ST/BEL
+      if (/^\x1b\]\d+;/.test(data)) return;
+
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ action: 'write', data }));
       }

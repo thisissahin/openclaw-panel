@@ -12,7 +12,7 @@ export default function LogPanel() {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [paused, setPaused] = useState(false)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const pausedRef = useRef(false)
   const initialScrollDone = useRef(false)
   const urlParams = new URLSearchParams(window.location.search)
@@ -46,16 +46,25 @@ export default function LogPanel() {
     return () => socket.close()
   }, [agentId])
 
+  const scrollToBottom = (smooth = false) => {
+    const el = containerRef.current
+    if (!el) return
+    if (smooth) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+    } else {
+      el.scrollTop = el.scrollHeight
+    }
+  }
+
   useEffect(() => {
     if (paused) return
     if (!initialScrollDone.current) {
-      // First batch — jump instantly, no smooth scroll
       setTimeout(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+        scrollToBottom(false)
         initialScrollDone.current = true
-      }, 50)
+      }, 30)
     } else {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      scrollToBottom(true)
     }
   }, [entries, paused])
 
@@ -92,7 +101,7 @@ export default function LogPanel() {
         </div>
       </div>
 
-      <div className="logs-body" style={{ flex: 1, overflowY: 'auto' }}>
+      <div ref={containerRef} className="logs-body" style={{ flex: 1, overflowY: 'auto' }}>
         {entries.length === 0 && <div className="logs-empty">Waiting for activity…</div>}
         {entries.map((entry, index) => (
           <div key={index} className={`log-line ${colorClass(entry.type)}`}>
@@ -100,7 +109,6 @@ export default function LogPanel() {
             <span className="log-text">{entry.text}</span>
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
     </div>
   )
