@@ -42,9 +42,6 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <span className="app-title">🤖 OpenClaw Panel</span>
-      </header>
 
       <main className="app-main no-scroll" style={{ position: 'relative' }}>
         <div
