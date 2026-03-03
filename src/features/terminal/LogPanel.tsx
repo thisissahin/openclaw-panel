@@ -14,6 +14,7 @@ export default function LogPanel() {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const bottomRef = useRef<HTMLDivElement>(null)
   const pausedRef = useRef(false)
+  const initialScrollDone = useRef(false)
   const urlParams = new URLSearchParams(window.location.search)
   const agentId = urlParams.get('agent') || 'main'
 
@@ -46,7 +47,14 @@ export default function LogPanel() {
   }, [agentId])
 
   useEffect(() => {
-    if (!paused) {
+    if (paused) return
+    if (!initialScrollDone.current) {
+      // First batch — jump instantly, no smooth scroll
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' as ScrollBehavior })
+        initialScrollDone.current = true
+      }, 50)
+    } else {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [entries, paused])
