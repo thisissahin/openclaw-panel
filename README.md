@@ -21,6 +21,23 @@ A mobile-optimized developer control panel for [OpenClaw](https://github.com/ope
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="screenshots/dashboard.png" width="220"/><br/><sub>Dashboard</sub></td>
+    <td><img src="screenshots/agent-detail.png" width="220"/><br/><sub>Agent Detail</sub></td>
+    <td><img src="screenshots/files.png" width="220"/><br/><sub>File Browser</sub></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/terminal.png" width="220"/><br/><sub>Terminal</sub></td>
+    <td><img src="screenshots/settings.png" width="220"/><br/><sub>Settings</sub></td>
+    <td><img src="screenshots/skills.png" width="220"/><br/><sub>Skills</sub></td>
+  </tr>
+</table>
+
+---
+
 ## Tech Stack
 
 | Layer | Stack |
