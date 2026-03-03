@@ -1,4 +1,4 @@
-# OpenClaw Panel — Workflow (Farid + Shahin)
+# OpenClaw Panel — Workflow
 
 ## Branching
 - Always branch from **main**.
