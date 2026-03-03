@@ -8,7 +8,7 @@ type LogEntry = {
   text: string
 }
 
-export default function LogPanel() {
+export default function LogPanel({ visible = true }: { visible?: boolean }) {
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [paused, setPaused] = useState(false)
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
@@ -45,14 +45,12 @@ export default function LogPanel() {
     return () => socket.close()
   }, [agentId])
 
-  // useLayoutEffect fires after DOM is updated but before paint —
-  // guarantees the container has full height before we scroll
   useLayoutEffect(() => {
-    if (paused) return
+    if (paused || !visible) return
     const el = containerRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [entries, paused])
+  }, [entries, paused, visible])
 
   const colorClass = (type: LogEntry['type']) => {
     switch (type) {

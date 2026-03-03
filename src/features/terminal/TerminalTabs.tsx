@@ -171,7 +171,7 @@ export default function TerminalTabs() {
         </div>
 
         <div style={{ display: showLogs ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
-          <LogPanel />
+          <LogPanel visible={showLogs} />
         </div>
       </div>
     </div>
