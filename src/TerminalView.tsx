@@ -86,6 +86,8 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
 
     try {
       const isMobile = window.innerWidth < 600;
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua);
       const term = new XTerm({
       cursorBlink: true,
       theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
@@ -95,6 +97,9 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
       scrollSensitivity: isMobile ? 2 : 1,
       fastScrollSensitivity: 5,
       smoothScrollDuration: 0,
+      // Older iOS webviews can be sensitive to early resize/fit calls.
+      // Keep options conservative.
+      customGlyphs: !isIOS,
     });
     const fitAddon = new FitAddon();
     fitAddonRef.current = fitAddon;
@@ -127,14 +132,40 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
       }
     });
 
-    const resizeObserver = new ResizeObserver(() => {
-      fitAddon.fit();
-      const dims = fitAddon.proposeDimensions();
-      if (dims && wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ action: 'resize', cols: dims.cols, rows: dims.rows }));
+    let rafPending = false
+    const safeFit = () => {
+      try {
+        const el = terminalRef.current
+        if (!el || !el.isConnected) return
+        const rect = el.getBoundingClientRect()
+        if (rect.width < 10 || rect.height < 10) return
+
+        fitAddon.fit()
+        const dims = fitAddon.proposeDimensions()
+        if (dims && wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ action: 'resize', cols: dims.cols, rows: dims.rows }))
+        }
+      } catch (e: any) {
+        setDebug(prev => `${prev}\nfitError=${e?.message || String(e)}`)
       }
-    });
-    resizeObserver.observe(terminalRef.current);
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (rafPending) return
+      rafPending = true
+      requestAnimationFrame(() => {
+        rafPending = false
+        safeFit()
+      })
+    })
+
+    // Delay observation until after the initial paint/fit
+    requestAnimationFrame(() => {
+      try {
+        resizeObserver.observe(terminalRef.current!)
+      } catch {}
+      safeFit()
+    })
 
     connect();
 
