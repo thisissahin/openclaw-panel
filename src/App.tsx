@@ -17,6 +17,7 @@ export default function App() {
   const [authed, setAuthed] = useState(isAuthenticated())
   const [tab, setTab] = useState<Tab>('dashboard')
   const [selectedAgent, setSelectedAgent] = useState<any>(null)
+  const [dashboardVersion, setDashboardVersion] = useState(0)
   const [toastMsg, setToastMsg] = useState('')
 
   const toast = (message: string) => setToastMsg(message)
@@ -54,11 +55,19 @@ export default function App() {
           }}
         >
           <div style={{ display: selectedAgent ? 'none' : 'block', height: '100%', overflowY: 'auto' }}>
-            <DashboardTab onSelectAgent={setSelectedAgent} toast={toast} />
+            <DashboardTab key={dashboardVersion} onSelectAgent={setSelectedAgent} toast={toast} />
           </div>
           {selectedAgent && (
             <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
-              <AgentDetail agent={selectedAgent} onBack={() => setSelectedAgent(null)} toast={toast} />
+              <AgentDetail
+                agent={selectedAgent}
+                onBack={() => setSelectedAgent(null)}
+                onDeleted={() => {
+                  setSelectedAgent(null)
+                  setDashboardVersion(v => v + 1)
+                }}
+                toast={toast}
+              />
             </div>
           )}
         </div>

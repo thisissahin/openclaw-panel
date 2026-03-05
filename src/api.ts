@@ -46,6 +46,7 @@ async function req(path: string, method = 'GET', body?: unknown) {
 export const ping = () => fetch(`${apiBase()}/api/ping`).then(r => r.json());
 export const getAgents = () => req('/api/agents');
 export const createAgent = (payload: { id?: string; name: string; botToken: string; model?: string }) => req('/api/agents/create', 'POST', payload);
+export const deleteAgent = (id: string) => req(`/api/agents/${encodeURIComponent(id)}`, 'DELETE');
 export const listMemory = () => req('/api/memory/list');
 export const readMemory = (file: string) => req(`/api/memory/read?file=${encodeURIComponent(file)}`);
 export const writeMemory = (file: string, content: string) => req('/api/memory/write', 'POST', { file, content });

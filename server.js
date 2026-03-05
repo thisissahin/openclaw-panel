@@ -260,6 +260,61 @@ app.post('/api/agents/create', async (req, res) => {
   }
 });
 
+app.delete('/api/agents/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'id required' });
+    if (id === 'main') return res.status(400).json({ ok: false, error: 'main agent cannot be deleted' });
+
+    const cfg = readConfig();
+    const existing = cfg?.agents?.list?.some(agent => agent.id === id);
+    if (!existing) return res.status(404).json({ ok: false, error: `Agent "${id}" not found` });
+
+    // Best-effort: remove cron jobs related to this agent.
+    try {
+      const cronList = await gatewayCall('cron.list', { includeDisabled: true });
+      const jobs = cronList?.jobs || cronList || [];
+      const related = jobs.filter(job =>
+        job?.sessionTarget === id ||
+        job?.payload?.agentId === id ||
+        String(job?.name || '').toLowerCase().includes(id.toLowerCase())
+      );
+      for (const job of related) {
+        const jobId = job.jobId || job.id;
+        if (jobId) {
+          try { await gatewayCall('cron.remove', { jobId }); } catch {}
+        }
+      }
+    } catch {}
+
+    cfg.agents.list = (cfg.agents.list || []).filter(agent => agent.id !== id);
+
+    if (cfg.channels?.telegram?.accounts?.[id]) {
+      delete cfg.channels.telegram.accounts[id];
+    }
+
+    cfg.bindings = (cfg.bindings || []).filter(binding => {
+      const match = binding?.match || {};
+      return !(binding.agentId === id || (match.channel === 'telegram' && match.accountId === id));
+    });
+
+    writeConfig(cfg);
+
+    rmSync(join(AGENTS_DIR, id), { recursive: true, force: true });
+    rmSync(join(OPENCLAW_HOME, `workspace-${id}`), { recursive: true, force: true });
+
+    const proc = spawn('openclaw', ['gateway', 'restart'], {
+      detached: true, stdio: 'ignore',
+      env: { ...process.env, HOME: os.homedir() }
+    });
+    proc.unref();
+
+    res.json({ ok: true, deleted: id });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
 // ── Terminal tabs (DB-backed) ─────────────────────────────────
 app.get('/api/tabs', (req, res) => {
   const agentId = req.headers['x-agent-id'] || 'main';
