@@ -163,11 +163,12 @@ export default function TerminalTabs() {
 
       <div style={{ flex: 1, position: 'relative', background: '#1e1e1e', overflow: 'hidden' }}>
         <div style={{ display: showLogs ? 'none' : 'block', height: '100%' }}>
-          {tabs.map(tab => (
-            <div key={tab.id} style={{ display: activeTab === tab.id ? 'block' : 'none', height: '100%' }}>
-              <TerminalView tabId={tab.id} />
-            </div>
-          ))}
+          {/*
+            Important for mobile: xterm should mount/open only when the container is visible.
+            Mounting multiple terminals (even hidden via display:none) can result in 0x0 sizing
+            and a blank terminal on some mobile/webview environments.
+          */}
+          {activeTab ? <TerminalView key={activeTab} tabId={activeTab} /> : null}
         </div>
 
         <div style={{ display: showLogs ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
