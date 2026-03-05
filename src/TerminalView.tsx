@@ -24,6 +24,8 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
+  const [debug, setDebug] = useState<string>('');
+  const [initError, setInitError] = useState<string | null>(null);
 
   const sendData = (data: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -35,42 +37,55 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
   useImperativeHandle(ref, () => ({ sendData }));
 
   const connect = () => {
-    if (wsRef.current) wsRef.current.close();
-    setStatus('connecting');
-    const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '');
-    const token = localStorage.getItem('token') || '';
-    const url = `${base}/ws/terminal?token=${token}&tabId=${encodeURIComponent(tabId)}`;
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
+    try {
+      if (wsRef.current) wsRef.current.close();
+      setStatus('connecting');
+      const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '');
+      const token = localStorage.getItem('token') || '';
+      const url = `${base}/ws/terminal?token=${token}&tabId=${encodeURIComponent(tabId)}`;
+      setDebug(`ws=${url}`);
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
 
-    ws.onopen = () => {
-      setStatus('connected');
-      if (xtermRef.current && fitAddonRef.current) {
-        const dims = fitAddonRef.current.proposeDimensions();
-        if (dims) ws.send(JSON.stringify({ action: 'resize', cols: dims.cols, rows: dims.rows }));
-      }
-    };
-
-    ws.onclose = () => setStatus('disconnected');
-    ws.onerror = () => setStatus('disconnected');
-
-    ws.onmessage = (e) => {
-      if (typeof e.data === 'string') {
-        try {
-          const payload = JSON.parse(e.data);
-          if (payload.data) xtermRef.current?.write(payload.data);
-        } catch {
-          xtermRef.current?.write(e.data);
+      ws.onopen = () => {
+        setStatus('connected');
+        if (xtermRef.current && fitAddonRef.current) {
+          const dims = fitAddonRef.current.proposeDimensions();
+          if (dims) ws.send(JSON.stringify({ action: 'resize', cols: dims.cols, rows: dims.rows }));
         }
-      }
-    };
+      };
+
+      ws.onclose = (ev) => {
+        setStatus('disconnected');
+        setDebug(prev => `${prev}\nclose code=${ev.code} reason=${ev.reason || '(none)'}`);
+      };
+      ws.onerror = () => {
+        setStatus('disconnected');
+        setDebug(prev => `${prev}\nerror=ws`);
+      };
+
+      ws.onmessage = (e) => {
+        if (typeof e.data === 'string') {
+          try {
+            const payload = JSON.parse(e.data);
+            if (payload.data) xtermRef.current?.write(payload.data);
+          } catch {
+            xtermRef.current?.write(e.data);
+          }
+        }
+      };
+    } catch (e: any) {
+      setInitError(e?.message || String(e));
+    }
   };
+
 
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    const isMobile = window.innerWidth < 600;
-    const term = new XTerm({
+    try {
+      const isMobile = window.innerWidth < 600;
+      const term = new XTerm({
       cursorBlink: true,
       theme: { background: '#1e1e1e', foreground: '#d4d4d4' },
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
@@ -127,6 +142,10 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
       term.dispose();
       if (wsRef.current) wsRef.current.close();
     };
+    } catch (e: any) {
+      setInitError(e?.message || String(e));
+      return;
+    }
   }, [tabId]);
 
   return (
@@ -145,6 +164,12 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
           ⌨️
         </button>
       </div>
+
+      {(initError || debug) && (
+        <div style={{ padding: '6px 8px', borderBottom: '1px solid #222', background: '#111', color: '#cbd5e1', fontSize: '11px', whiteSpace: 'pre-wrap' }}>
+          {initError ? `initError: ${initError}\n` : ''}{debug}
+        </div>
+      )}
 
       {/* Mobile key toolbar */}
       <div style={{ display: 'flex', gap: '4px', padding: '5px 6px', background: '#161616', borderBottom: '1px solid #2a2a2a', flexShrink: 0, overflowX: 'auto' }}>
