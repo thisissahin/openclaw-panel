@@ -106,8 +106,12 @@ app.use('/api', (req, res, next) => {
 
 // ── Agent/Session status ──────────────────────────────────────
 app.get('/api/agents', (req, res) => {
-  const agentIds = discoverAgents();
-  const agents = agentIds.map(id => {
+  const configured = readConfig()?.agents?.list || [];
+  const discovered = discoverAgents();
+  const ids = [...new Set([...configured.map(a => a.id), ...discovered])].filter(Boolean);
+
+  const agents = ids.map(id => {
+    const configuredAgent = configured.find(a => a.id === id) || {};
     const { name, emoji } = parseIdentity(id);
     try {
       const sessFile = join(AGENTS_DIR, id, 'sessions', 'sessions.json');
@@ -116,18 +120,93 @@ app.get('/api/agents', (req, res) => {
       const sess = data[key] || {};
       return {
         id,
-        name,
+        name: configuredAgent.name || name,
         emoji,
-        model: sess.model || '—',
+        model: sess.model || configuredAgent.model || '—',
         online: !!sess.model,
         tokens: sess.totalTokens || 0,
         updatedAt: sess.updatedAt || null,
       };
     } catch {
-      return { id, name, emoji, online: false, model: '—' };
+      return { id, name: configuredAgent.name || name, emoji, online: false, model: configuredAgent.model || '—' };
     }
   });
   res.json({ ok: true, agents });
+});
+
+app.post('/api/agents/create', async (req, res) => {
+  try {
+    const { id: rawId, name, botToken, model } = req.body || {};
+    if (!name?.trim()) return res.status(400).json({ ok: false, error: 'name required' });
+    if (!botToken?.trim()) return res.status(400).json({ ok: false, error: 'botToken required' });
+
+    const id = (rawId || name)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    if (!id) return res.status(400).json({ ok: false, error: 'invalid id' });
+    if (id === 'main') return res.status(400).json({ ok: false, error: 'id "main" is reserved' });
+
+    // Validate Telegram token early.
+    const verify = await fetch(`https://api.telegram.org/bot${botToken.trim()}/getMe`);
+    const verifyJson = await verify.json();
+    if (!verifyJson?.ok) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token' });
+
+    const cfg = readConfig();
+    cfg.agents = cfg.agents || {};
+    cfg.agents.list = cfg.agents.list || [];
+    cfg.channels = cfg.channels || {};
+    cfg.channels.telegram = cfg.channels.telegram || { enabled: true };
+    cfg.channels.telegram.accounts = cfg.channels.telegram.accounts || {};
+    cfg.bindings = cfg.bindings || [];
+
+    if (cfg.agents.list.some(agent => agent.id === id)) {
+      return res.status(400).json({ ok: false, error: `Agent "${id}" already exists` });
+    }
+    if (cfg.channels.telegram.accounts[id]) {
+      return res.status(400).json({ ok: false, error: `Telegram account "${id}" already exists` });
+    }
+
+    const baseAccount = cfg.channels.telegram.accounts?.default || {};
+
+    cfg.agents.list.push({
+      id,
+      name: name.trim(),
+      workspace: join(OPENCLAW_HOME, `workspace-${id}`),
+      agentDir: join(OPENCLAW_HOME, 'agents', id, 'agent'),
+      ...(model?.trim() ? { model: model.trim() } : {}),
+    });
+
+    cfg.channels.telegram.accounts[id] = {
+      dmPolicy: baseAccount.dmPolicy || cfg.channels.telegram.dmPolicy || 'allowlist',
+      botToken: botToken.trim(),
+      allowFrom: baseAccount.allowFrom || cfg.channels.telegram.allowFrom || [],
+      groupPolicy: baseAccount.groupPolicy || cfg.channels.telegram.groupPolicy || 'allowlist',
+      streaming: baseAccount.streaming || cfg.channels.telegram.streaming || 'partial',
+    };
+
+    cfg.bindings.push({
+      agentId: id,
+      match: { channel: 'telegram', accountId: id }
+    });
+
+    mkdirSync(join(AGENTS_DIR, id), { recursive: true });
+    mkdirSync(join(OPENCLAW_HOME, `workspace-${id}`), { recursive: true });
+
+    writeConfig(cfg);
+
+    const proc = spawn('openclaw', ['gateway', 'restart'], {
+      detached: true, stdio: 'ignore',
+      env: { ...process.env, HOME: os.homedir() }
+    });
+    proc.unref();
+
+    res.json({ ok: true, agent: { id, name: name.trim(), botUsername: verifyJson?.result?.username || '' } });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
 });
 
 // ── Terminal tabs (DB-backed) ─────────────────────────────────

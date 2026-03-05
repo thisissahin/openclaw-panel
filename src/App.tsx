@@ -54,7 +54,7 @@ export default function App() {
           }}
         >
           <div style={{ display: selectedAgent ? 'none' : 'block', height: '100%', overflowY: 'auto' }}>
-            <DashboardTab onSelectAgent={setSelectedAgent} />
+            <DashboardTab onSelectAgent={setSelectedAgent} toast={toast} />
           </div>
           {selectedAgent && (
             <div style={{ position: 'absolute', inset: 0, zIndex: 5 }}>
