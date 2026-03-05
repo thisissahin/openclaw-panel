@@ -1,13 +1,18 @@
+function normalizeToken(raw: string) {
+  const t = (raw || '').trim()
+  return t.toLowerCase().startsWith('bearer ') ? t.slice(7).trim() : t
+}
+
 export function getSettings() {
   return {
     gatewayUrl: localStorage.getItem('gatewayUrl') || '',
-    token: localStorage.getItem('token') || '',
+    token: normalizeToken(localStorage.getItem('token') || ''),
   };
 }
 
 export function saveSettings(gatewayUrl: string, token: string) {
-  localStorage.setItem('gatewayUrl', gatewayUrl);
-  localStorage.setItem('token', token);
+  localStorage.setItem('gatewayUrl', gatewayUrl.trim());
+  localStorage.setItem('token', normalizeToken(token));
 }
 
 export function isAuthenticated() {
@@ -24,7 +29,9 @@ export function apiBase() {
 }
 
 async function req(path: string, method = 'GET', body?: unknown) {
-  const token = localStorage.getItem('token') || '';
+  const token = (localStorage.getItem('token') || '').trim().toLowerCase().startsWith('bearer ')
+    ? (localStorage.getItem('token') || '').trim().slice(7).trim()
+    : (localStorage.getItem('token') || '').trim();
   const urlParams = new URLSearchParams(window.location.search);
   const agentId = urlParams.get('agent') || 'main';
 

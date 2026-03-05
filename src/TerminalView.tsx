@@ -41,7 +41,8 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
       if (wsRef.current) wsRef.current.close();
       setStatus('connecting');
       const base = apiBase().replace(/^http/, 'ws').replace(/\/$/, '');
-      const token = localStorage.getItem('token') || '';
+      const rawToken = localStorage.getItem('token') || '';
+      const token = rawToken.trim().toLowerCase().startsWith('bearer ') ? rawToken.trim().slice(7).trim() : rawToken.trim();
       const safeToken = encodeURIComponent(token)
       const url = `${base}/ws/terminal?token=${safeToken}&tabId=${encodeURIComponent(tabId)}`;
       setDebug(`ws=${url}`);
