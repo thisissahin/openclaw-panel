@@ -85,7 +85,7 @@ export default function App() {
         )}
 
         {tab === 'terminal' && (
-          <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
             <TerminalTabs />
           </div>
         )}

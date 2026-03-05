@@ -94,7 +94,7 @@ export default function TerminalTabs() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div
         style={{
           display: 'flex',
@@ -161,7 +161,7 @@ export default function TerminalTabs() {
         </button>
       </div>
 
-      <div style={{ flex: 1, position: 'relative', background: '#1e1e1e', overflow: 'hidden' }}>
+      <div style={{ flex: 1, position: 'relative', background: '#1e1e1e', overflow: 'hidden', minHeight: 0 }}>
         <div style={{ display: showLogs ? 'none' : 'block', height: '100%' }}>
           {/*
             Important for mobile: xterm should mount/open only when the container is visible.

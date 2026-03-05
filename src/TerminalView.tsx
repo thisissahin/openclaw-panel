@@ -130,7 +130,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
   }, [tabId]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', touchAction: 'none' } as React.CSSProperties}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden', touchAction: 'none' } as React.CSSProperties}>
       {/* Status bar */}
       <div style={{ display: 'flex', gap: '6px', padding: '6px 8px', borderBottom: '1px solid #333', alignItems: 'center', flexShrink: 0 }}>
         {status !== 'connected' && (
@@ -176,6 +176,7 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
         ref={terminalRef}
         style={{
           flex: 1,
+          minHeight: 0,
           overflow: 'hidden',
           padding: 0,
           background: '#1e1e1e',
