@@ -84,7 +84,16 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.open(terminalRef.current);
-    fitAddon.fit();
+
+    // On mobile / embedded webviews, the container often reports 0x0 on first paint.
+    // Defer the initial fit to the next tick to avoid a blank terminal.
+    requestAnimationFrame(() => {
+      try {
+        fitAddon.fit();
+      } catch {
+        // ignore
+      }
+    });
     xtermRef.current = term;
 
     term.onData((data) => {
