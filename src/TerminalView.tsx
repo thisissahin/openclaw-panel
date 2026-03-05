@@ -167,7 +167,8 @@ const TerminalView = forwardRef<TerminalViewHandle, { tabId: string }>(({ tabId 
       safeFit()
     })
 
-    connect();
+    // Do not auto-connect on mount. On some older iOS Telegram webviews,
+    // websocket initialization can hard-crash the mini app. User can tap Connect.
 
     return () => {
       resizeObserver.disconnect();
