@@ -58,15 +58,24 @@ function parseIdentity(agentId) {
   const ws = getAgentWorkspace(agentId);
   try {
     const content = readFileSync(join(ws, 'IDENTITY.md'), 'utf-8');
-    const name = content.match(/\*\*Name:\*\*\s*(.+)/)?.[1]?.trim() || agentId;
-    const emojiRaw = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '🤖';
+    const nameRaw = content.match(/\*\*Name:\*\*\s*(.+)/)?.[1]?.trim() || '';
+    const emojiRaw = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '';
 
-    // IDENTITY.md often includes descriptions like "👾 *(pixel vibe)*".
-    // For UI, keep only the first token/glyph.
-    const emoji = emojiRaw
+    const cleanedName = nameRaw
+      .replace(/[\*_`]/g, '')
+      .replace(/^[\[(]+|[\])]+$/g, '')
+      .trim();
+
+    let name = cleanedName || agentId;
+    if (/^(not set|your name|name)$/i.test(name)) name = agentId;
+
+    // IDENTITY placeholders like "_(your emoji)_" should not leak into UI.
+    let emoji = emojiRaw
       .replace(/[\*_`]/g, '')
       .trim()
       .split(/\s+/)[0] || '🤖';
+
+    if (!emoji || emoji.startsWith('(') || /^(your|not)$/i.test(emoji)) emoji = '🤖';
 
     return { name, emoji };
   } catch {}
@@ -193,7 +202,13 @@ app.post('/api/agents/create', async (req, res) => {
     });
 
     mkdirSync(join(AGENTS_DIR, id), { recursive: true });
-    mkdirSync(join(OPENCLAW_HOME, `workspace-${id}`), { recursive: true });
+    const workspacePath = join(OPENCLAW_HOME, `workspace-${id}`);
+    mkdirSync(workspacePath, { recursive: true });
+
+    const identityPath = join(workspacePath, 'IDENTITY.md');
+    if (!existsSync(identityPath)) {
+      writeFileSync(identityPath, `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name.trim()}\n- **Creature:** AI Assistant\n- **Vibe:** Helpful and focused\n- **Emoji:** 🤖\n- **Avatar:** _(not set)_\n`, 'utf-8');
+    }
 
     writeConfig(cfg);
 
