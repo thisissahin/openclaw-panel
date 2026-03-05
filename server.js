@@ -212,27 +212,48 @@ app.post('/api/agents/create', async (req, res) => {
       writeFileSync(identityPath, `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name.trim()}\n- **Creature:** AI Assistant\n- **Vibe:** Helpful and focused\n- **Emoji:** 🤖\n- **Avatar:** _(not set)_\n`, 'utf-8');
     }
 
-    // Copy the existing default bot's menu button to the new bot so Panel appears out of the box.
+    // Copy default bot menu button, but force URL ?agent=<id> so each bot opens its own workspace.
     let menuButtonSynced = false;
     let menuButtonWarning = '';
     try {
       const templateBotToken = cfg.channels?.telegram?.accounts?.default?.botToken || cfg.channels?.telegram?.botToken;
       if (templateBotToken) {
-        const menuRes = await fetch(`https://api.telegram.org/bot${templateBotToken}/getChatMenuButton`);
-        const menuJson = await menuRes.json();
-        const menuButton = menuJson?.result?.menu_button;
+        const defaultChatId = cfg.channels?.telegram?.accounts?.default?.allowFrom?.[0] || cfg.channels?.telegram?.allowFrom?.[0];
+        const byChatUrl = defaultChatId
+          ? `https://api.telegram.org/bot${templateBotToken}/getChatMenuButton?chat_id=${defaultChatId}`
+          : null;
 
-        if (menuJson?.ok && menuButton && menuButton.type !== 'default') {
+        let menuJson = null;
+        if (byChatUrl) {
+          const byChatRes = await fetch(byChatUrl);
+          menuJson = await byChatRes.json();
+        }
+        if (!menuJson?.ok || menuJson?.result?.type !== 'web_app') {
+          const menuRes = await fetch(`https://api.telegram.org/bot${templateBotToken}/getChatMenuButton`);
+          menuJson = await menuRes.json();
+        }
+
+        const menuButton = menuJson?.result?.menu_button || menuJson?.result;
+
+        if (menuJson?.ok && menuButton && menuButton.type === 'web_app' && menuButton.web_app?.url) {
+          const url = new URL(menuButton.web_app.url);
+          url.searchParams.set('agent', id);
           const setRes = await fetch(`https://api.telegram.org/bot${newBotToken}/setChatMenuButton`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ menu_button: menuButton })
+            body: JSON.stringify({
+              menu_button: {
+                type: 'web_app',
+                text: menuButton.text || 'Panel',
+                web_app: { url: url.toString() }
+              }
+            })
           });
           const setJson = await setRes.json();
           if (setJson?.ok) menuButtonSynced = true;
           else menuButtonWarning = setJson?.description || 'Failed to apply menu button';
         } else {
-          menuButtonWarning = 'Template bot has no custom menu button configured';
+          menuButtonWarning = 'Template bot menu button is not a web_app button';
         }
       } else {
         menuButtonWarning = 'No template bot token found to copy menu button from';
