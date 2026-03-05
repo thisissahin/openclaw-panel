@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ArrowLeft, RefreshCw, Minimize2, RotateCcw, Play, Trash2, ChevronDown, ChevronUp, Plus, X, Pencil } from 'lucide-react'
-import { getSessions, compactSession, resetSession, getUsage, getCronJobs, runCronJob, updateCronJob, deleteCronJob, createCronJob } from './api'
+import { getSessions, compactSession, resetSession, getUsage, getCronJobs, runCronJob, updateCronJob, deleteCronJob, createCronJob, deleteAgent } from './api'
 
 // ── Helpers ───────────────────────────────────────────────────
 function fmt(n: number) { return n >= 1_000_000 ? `${(n/1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n/1000).toFixed(1)}k` : String(n) }
@@ -555,13 +555,43 @@ function CronPanel({ agentId, toast }: { agentId: string; toast: (m: string) => 
 }
 
 // ── Agent Detail Page ─────────────────────────────────────────
-export default function AgentDetail({ agent, onBack, toast }: {
+export default function AgentDetail({ agent, onBack, onDeleted, toast }: {
   agent: { id: string; name: string; emoji: string; model: string; online: boolean; tokens: number }
   onBack: () => void
+  onDeleted?: () => void
   toast: (m: string) => void
 }) {
+  const [confirmDeleteAgent, setConfirmDeleteAgent] = useState(false)
+  const [deletingAgent, setDeletingAgent] = useState(false)
+
+  const doDeleteAgent = async () => {
+    if (agent.id === 'main') {
+      toast('Main agent cannot be deleted')
+      return
+    }
+    setDeletingAgent(true)
+    try {
+      const response = await deleteAgent(agent.id)
+      if (!response.ok) throw new Error(response.error || 'Delete failed')
+      toast(`Agent ${agent.id} deleted ✅`)
+      setConfirmDeleteAgent(false)
+      onDeleted?.()
+    } catch (error: any) {
+      toast(`Delete failed: ${error.message}`)
+    } finally {
+      setDeletingAgent(false)
+    }
+  }
+
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)' }}>
+      {confirmDeleteAgent && (
+        <ConfirmDialog
+          msg={`Delete agent "${agent.name}" (${agent.id})? This removes config, workspace, sessions, and Telegram account binding.`}
+          onConfirm={doDeleteAgent}
+          onCancel={() => setConfirmDeleteAgent(false)}
+        />
+      )}
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 10, borderBottom: '1px solid var(--border)' }}>
         <button className="icon-btn" style={{ padding: '8px' }} onClick={onBack}><ArrowLeft size={18} /></button>
@@ -585,6 +615,19 @@ export default function AgentDetail({ agent, onBack, toast }: {
         <Section title="🗓 Cron Jobs" defaultOpen={false}>
           <CronPanel agentId={agent.id} toast={toast} />
         </Section>
+
+        {agent.id !== 'main' && (
+          <Section title="⚠️ Danger Zone" defaultOpen={false}>
+            <button
+              className="btn btn-danger"
+              onClick={() => setConfirmDeleteAgent(true)}
+              disabled={deletingAgent}
+              style={{ width: '100%' }}
+            >
+              <Trash2 size={13} /> {deletingAgent ? 'Deleting…' : 'Delete Agent'}
+            </button>
+          </Section>
+        )}
       </div>
     </div>
   )

@@ -58,15 +58,24 @@ function parseIdentity(agentId) {
   const ws = getAgentWorkspace(agentId);
   try {
     const content = readFileSync(join(ws, 'IDENTITY.md'), 'utf-8');
-    const name = content.match(/\*\*Name:\*\*\s*(.+)/)?.[1]?.trim() || agentId;
-    const emojiRaw = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '🤖';
+    const nameRaw = content.match(/\*\*Name:\*\*\s*(.+)/)?.[1]?.trim() || '';
+    const emojiRaw = content.match(/\*\*Emoji:\*\*\s*(.+)/)?.[1]?.trim() || '';
 
-    // IDENTITY.md often includes descriptions like "👾 *(pixel vibe)*".
-    // For UI, keep only the first token/glyph.
-    const emoji = emojiRaw
+    const cleanedName = nameRaw
+      .replace(/[\*_`]/g, '')
+      .replace(/^[\[(]+|[\])]+$/g, '')
+      .trim();
+
+    let name = cleanedName || agentId;
+    if (/^(not set|your name|name)$/i.test(name)) name = agentId;
+
+    // IDENTITY placeholders like "_(your emoji)_" should not leak into UI.
+    let emoji = emojiRaw
       .replace(/[\*_`]/g, '')
       .trim()
       .split(/\s+/)[0] || '🤖';
+
+    if (!emoji || emoji.startsWith('(') || /^(your|not)$/i.test(emoji)) emoji = '🤖';
 
     return { name, emoji };
   } catch {}
@@ -106,8 +115,12 @@ app.use('/api', (req, res, next) => {
 
 // ── Agent/Session status ──────────────────────────────────────
 app.get('/api/agents', (req, res) => {
-  const agentIds = discoverAgents();
-  const agents = agentIds.map(id => {
+  const configured = readConfig()?.agents?.list || [];
+  const discovered = discoverAgents();
+  const ids = [...new Set([...configured.map(a => a.id), ...discovered])].filter(Boolean);
+
+  const agents = ids.map(id => {
+    const configuredAgent = configured.find(a => a.id === id) || {};
     const { name, emoji } = parseIdentity(id);
     try {
       const sessFile = join(AGENTS_DIR, id, 'sessions', 'sessions.json');
@@ -116,18 +129,211 @@ app.get('/api/agents', (req, res) => {
       const sess = data[key] || {};
       return {
         id,
-        name,
+        name: configuredAgent.name || name,
         emoji,
-        model: sess.model || '—',
+        model: sess.model || configuredAgent.model || '—',
         online: !!sess.model,
         tokens: sess.totalTokens || 0,
         updatedAt: sess.updatedAt || null,
       };
     } catch {
-      return { id, name, emoji, online: false, model: '—' };
+      return { id, name: configuredAgent.name || name, emoji, online: false, model: configuredAgent.model || '—' };
     }
   });
   res.json({ ok: true, agents });
+});
+
+app.post('/api/agents/create', async (req, res) => {
+  try {
+    const { id: rawId, name, botToken, model } = req.body || {};
+    if (!name?.trim()) return res.status(400).json({ ok: false, error: 'name required' });
+    if (!botToken?.trim()) return res.status(400).json({ ok: false, error: 'botToken required' });
+
+    const id = (rawId || name)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    if (!id) return res.status(400).json({ ok: false, error: 'invalid id' });
+    if (id === 'main') return res.status(400).json({ ok: false, error: 'id "main" is reserved' });
+
+    // Validate Telegram token early.
+    const verify = await fetch(`https://api.telegram.org/bot${botToken.trim()}/getMe`);
+    const verifyJson = await verify.json();
+    if (!verifyJson?.ok) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token' });
+
+    const newBotToken = botToken.trim();
+
+    const cfg = readConfig();
+    cfg.agents = cfg.agents || {};
+    cfg.agents.list = cfg.agents.list || [];
+    cfg.channels = cfg.channels || {};
+    cfg.channels.telegram = cfg.channels.telegram || { enabled: true };
+    cfg.channels.telegram.accounts = cfg.channels.telegram.accounts || {};
+    cfg.bindings = cfg.bindings || [];
+
+    if (cfg.agents.list.some(agent => agent.id === id)) {
+      return res.status(400).json({ ok: false, error: `Agent "${id}" already exists` });
+    }
+    if (cfg.channels.telegram.accounts[id]) {
+      return res.status(400).json({ ok: false, error: `Telegram account "${id}" already exists` });
+    }
+
+    const baseAccount = cfg.channels.telegram.accounts?.default || {};
+
+    cfg.agents.list.push({
+      id,
+      name: name.trim(),
+      workspace: join(OPENCLAW_HOME, `workspace-${id}`),
+      agentDir: join(OPENCLAW_HOME, 'agents', id, 'agent'),
+      ...(model?.trim() ? { model: model.trim() } : {}),
+    });
+
+    cfg.channels.telegram.accounts[id] = {
+      dmPolicy: baseAccount.dmPolicy || cfg.channels.telegram.dmPolicy || 'allowlist',
+      botToken: newBotToken,
+      allowFrom: baseAccount.allowFrom || cfg.channels.telegram.allowFrom || [],
+      groupPolicy: baseAccount.groupPolicy || cfg.channels.telegram.groupPolicy || 'allowlist',
+      streaming: baseAccount.streaming || cfg.channels.telegram.streaming || 'partial',
+    };
+
+    cfg.bindings.push({
+      agentId: id,
+      match: { channel: 'telegram', accountId: id }
+    });
+
+    mkdirSync(join(AGENTS_DIR, id), { recursive: true });
+    const workspacePath = join(OPENCLAW_HOME, `workspace-${id}`);
+    mkdirSync(workspacePath, { recursive: true });
+
+    const identityPath = join(workspacePath, 'IDENTITY.md');
+    if (!existsSync(identityPath)) {
+      writeFileSync(identityPath, `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name.trim()}\n- **Creature:** AI Assistant\n- **Vibe:** Helpful and focused\n- **Emoji:** 🤖\n- **Avatar:** _(not set)_\n`, 'utf-8');
+    }
+
+    // Copy default bot menu button, but force URL ?agent=<id> so each bot opens its own workspace.
+    let menuButtonSynced = false;
+    let menuButtonWarning = '';
+    try {
+      const templateBotToken = cfg.channels?.telegram?.accounts?.default?.botToken || cfg.channels?.telegram?.botToken;
+      if (templateBotToken) {
+        const defaultChatId = cfg.channels?.telegram?.accounts?.default?.allowFrom?.[0] || cfg.channels?.telegram?.allowFrom?.[0];
+        const byChatUrl = defaultChatId
+          ? `https://api.telegram.org/bot${templateBotToken}/getChatMenuButton?chat_id=${defaultChatId}`
+          : null;
+
+        let menuJson = null;
+        if (byChatUrl) {
+          const byChatRes = await fetch(byChatUrl);
+          menuJson = await byChatRes.json();
+        }
+        if (!menuJson?.ok || menuJson?.result?.type !== 'web_app') {
+          const menuRes = await fetch(`https://api.telegram.org/bot${templateBotToken}/getChatMenuButton`);
+          menuJson = await menuRes.json();
+        }
+
+        const menuButton = menuJson?.result?.menu_button || menuJson?.result;
+
+        if (menuJson?.ok && menuButton && menuButton.type === 'web_app' && menuButton.web_app?.url) {
+          const url = new URL(menuButton.web_app.url);
+          url.searchParams.set('agent', id);
+          const setRes = await fetch(`https://api.telegram.org/bot${newBotToken}/setChatMenuButton`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              menu_button: {
+                type: 'web_app',
+                text: menuButton.text || 'Panel',
+                web_app: { url: url.toString() }
+              }
+            })
+          });
+          const setJson = await setRes.json();
+          if (setJson?.ok) menuButtonSynced = true;
+          else menuButtonWarning = setJson?.description || 'Failed to apply menu button';
+        } else {
+          menuButtonWarning = 'Template bot menu button is not a web_app button';
+        }
+      } else {
+        menuButtonWarning = 'No template bot token found to copy menu button from';
+      }
+    } catch (error) {
+      menuButtonWarning = String(error);
+    }
+
+    writeConfig(cfg);
+
+    const proc = spawn('openclaw', ['gateway', 'restart'], {
+      detached: true, stdio: 'ignore',
+      env: { ...process.env, HOME: os.homedir() }
+    });
+    proc.unref();
+
+    res.json({
+      ok: true,
+      agent: { id, name: name.trim(), botUsername: verifyJson?.result?.username || '' },
+      menuButtonSynced,
+      ...(menuButtonWarning ? { warning: menuButtonWarning } : {})
+    });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
+});
+
+app.delete('/api/agents/:id', async (req, res) => {
+  try {
+    const id = String(req.params.id || '').trim();
+    if (!id) return res.status(400).json({ ok: false, error: 'id required' });
+    if (id === 'main') return res.status(400).json({ ok: false, error: 'main agent cannot be deleted' });
+
+    const cfg = readConfig();
+    const existing = cfg?.agents?.list?.some(agent => agent.id === id);
+    if (!existing) return res.status(404).json({ ok: false, error: `Agent "${id}" not found` });
+
+    // Best-effort: remove cron jobs related to this agent.
+    try {
+      const cronList = await gatewayCall('cron.list', { includeDisabled: true });
+      const jobs = cronList?.jobs || cronList || [];
+      const related = jobs.filter(job =>
+        job?.sessionTarget === id ||
+        job?.payload?.agentId === id ||
+        String(job?.name || '').toLowerCase().includes(id.toLowerCase())
+      );
+      for (const job of related) {
+        const jobId = job.jobId || job.id;
+        if (jobId) {
+          try { await gatewayCall('cron.remove', { jobId }); } catch {}
+        }
+      }
+    } catch {}
+
+    cfg.agents.list = (cfg.agents.list || []).filter(agent => agent.id !== id);
+
+    if (cfg.channels?.telegram?.accounts?.[id]) {
+      delete cfg.channels.telegram.accounts[id];
+    }
+
+    cfg.bindings = (cfg.bindings || []).filter(binding => {
+      const match = binding?.match || {};
+      return !(binding.agentId === id || (match.channel === 'telegram' && match.accountId === id));
+    });
+
+    writeConfig(cfg);
+
+    rmSync(join(AGENTS_DIR, id), { recursive: true, force: true });
+    rmSync(join(OPENCLAW_HOME, `workspace-${id}`), { recursive: true, force: true });
+
+    const proc = spawn('openclaw', ['gateway', 'restart'], {
+      detached: true, stdio: 'ignore',
+      env: { ...process.env, HOME: os.homedir() }
+    });
+    proc.unref();
+
+    res.json({ ok: true, deleted: id });
+  } catch (e) {
+    res.json({ ok: false, error: String(e) });
+  }
 });
 
 // ── Terminal tabs (DB-backed) ─────────────────────────────────
