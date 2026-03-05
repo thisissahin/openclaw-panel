@@ -242,7 +242,7 @@ export default function SettingsTab({ toast, onLogout }: SettingsTabProps) {
               }}
             >
               <option value="partial">Partial (live updates)</option>
-              <option value="full">Full (send when done)</option>
+              <option value="progress">Progress (structured updates)</option>
               <option value="off">Off</option>
             </select>
           </Row>
