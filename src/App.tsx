@@ -13,7 +13,20 @@ import './App.css'
 
 type Tab = 'dashboard' | 'files' | 'skills' | 'terminal' | 'settings'
 
-export default function App() {
+function readLastCrash(): string | null {
+  try {
+    const raw = localStorage.getItem('lastCrash')
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    const msg = data?.message || ''
+    const where = data?.filename ? ` @ ${data.filename}:${data.lineno ?? ''}` : ''
+    return `${data.type || 'crash'}: ${msg}${where}`
+  } catch {
+    return null
+  }
+}
+
+export default function App() {  
   const [authed, setAuthed] = useState(isAuthenticated())
   const [tab, setTab] = useState<Tab>('dashboard')
   const [selectedAgent, setSelectedAgent] = useState<any>(null)
@@ -41,8 +54,27 @@ export default function App() {
     return <LoginScreen onLogin={() => setAuthed(true)} />
   }
 
+  const lastCrash = readLastCrash()
+
   return (
     <div className="app">
+      {lastCrash && (
+        <div style={{ padding: '8px 10px', background: '#3b1d1d', color: '#ffd7d7', borderBottom: '1px solid rgba(255,255,255,0.08)', fontSize: '12px' }}>
+          <div style={{ fontWeight: 700, marginBottom: '4px' }}>Last crash detected</div>
+          <div style={{ opacity: 0.95, wordBreak: 'break-word' }}>{lastCrash}</div>
+          <button
+            className="btn"
+            style={{ marginTop: '6px', padding: '6px 10px', fontSize: '12px' }}
+            onClick={() => {
+              try { localStorage.removeItem('lastCrash') } catch {}
+              // hard reload
+              location.reload()
+            }}
+          >
+            Clear + Reload
+          </button>
+        </div>
+      )}
 
       <main className="app-main no-scroll" style={{ position: 'relative' }}>
         <div
