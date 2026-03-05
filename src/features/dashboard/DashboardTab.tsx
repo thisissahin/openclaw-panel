@@ -101,7 +101,7 @@ export default function DashboardTab({ onSelectAgent, toast }: DashboardTabProps
           </div>
 
           <input
-            placeholder="Name (e.g. Dwight)"
+            placeholder="Name (e.g. Atlas)"
             value={form.name}
             onChange={event =>
               setForm(previous => {
