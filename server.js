@@ -100,8 +100,16 @@ function getWorkspace(req) {
   return getAgentWorkspace(agentId);
 }
 
-// Serve static panel files
-app.use(express.static(join(__dirname, 'dist')));
+// Serve static panel files (dev-friendly: disable caching to avoid Telegram/Cloudflare stale assets)
+app.use((req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  next();
+});
+app.use(express.static(join(__dirname, 'dist'), {
+  etag: false,
+  lastModified: false,
+  maxAge: 0,
+}));
 
 // Public endpoint: lets the frontend check reachability and version
 app.get('/api/ping', (_, res) => res.json({ ok: true, version: '1.0.0' }));
