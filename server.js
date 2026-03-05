@@ -163,6 +163,8 @@ app.post('/api/agents/create', async (req, res) => {
     const verifyJson = await verify.json();
     if (!verifyJson?.ok) return res.status(400).json({ ok: false, error: 'Invalid Telegram bot token' });
 
+    const newBotToken = botToken.trim();
+
     const cfg = readConfig();
     cfg.agents = cfg.agents || {};
     cfg.agents.list = cfg.agents.list || [];
@@ -190,7 +192,7 @@ app.post('/api/agents/create', async (req, res) => {
 
     cfg.channels.telegram.accounts[id] = {
       dmPolicy: baseAccount.dmPolicy || cfg.channels.telegram.dmPolicy || 'allowlist',
-      botToken: botToken.trim(),
+      botToken: newBotToken,
       allowFrom: baseAccount.allowFrom || cfg.channels.telegram.allowFrom || [],
       groupPolicy: baseAccount.groupPolicy || cfg.channels.telegram.groupPolicy || 'allowlist',
       streaming: baseAccount.streaming || cfg.channels.telegram.streaming || 'partial',
@@ -210,6 +212,35 @@ app.post('/api/agents/create', async (req, res) => {
       writeFileSync(identityPath, `# IDENTITY.md - Who Am I?\n\n- **Name:** ${name.trim()}\n- **Creature:** AI Assistant\n- **Vibe:** Helpful and focused\n- **Emoji:** 🤖\n- **Avatar:** _(not set)_\n`, 'utf-8');
     }
 
+    // Copy the existing default bot's menu button to the new bot so Panel appears out of the box.
+    let menuButtonSynced = false;
+    let menuButtonWarning = '';
+    try {
+      const templateBotToken = cfg.channels?.telegram?.accounts?.default?.botToken || cfg.channels?.telegram?.botToken;
+      if (templateBotToken) {
+        const menuRes = await fetch(`https://api.telegram.org/bot${templateBotToken}/getChatMenuButton`);
+        const menuJson = await menuRes.json();
+        const menuButton = menuJson?.result?.menu_button;
+
+        if (menuJson?.ok && menuButton && menuButton.type !== 'default') {
+          const setRes = await fetch(`https://api.telegram.org/bot${newBotToken}/setChatMenuButton`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ menu_button: menuButton })
+          });
+          const setJson = await setRes.json();
+          if (setJson?.ok) menuButtonSynced = true;
+          else menuButtonWarning = setJson?.description || 'Failed to apply menu button';
+        } else {
+          menuButtonWarning = 'Template bot has no custom menu button configured';
+        }
+      } else {
+        menuButtonWarning = 'No template bot token found to copy menu button from';
+      }
+    } catch (error) {
+      menuButtonWarning = String(error);
+    }
+
     writeConfig(cfg);
 
     const proc = spawn('openclaw', ['gateway', 'restart'], {
@@ -218,7 +249,12 @@ app.post('/api/agents/create', async (req, res) => {
     });
     proc.unref();
 
-    res.json({ ok: true, agent: { id, name: name.trim(), botUsername: verifyJson?.result?.username || '' } });
+    res.json({
+      ok: true,
+      agent: { id, name: name.trim(), botUsername: verifyJson?.result?.username || '' },
+      menuButtonSynced,
+      ...(menuButtonWarning ? { warning: menuButtonWarning } : {})
+    });
   } catch (e) {
     res.json({ ok: false, error: String(e) });
   }
