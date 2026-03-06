@@ -178,6 +178,14 @@ OPENCLAW_HOME=/custom/path node server.js
 
 ---
 
+## Contributing
+
+We welcome contributions across UI, backend routes, docs, and DX.
+
+- Start here: [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Use issue templates for bugs/features
+- Open PRs against `dev`
+
 ## Patch Notes
 
 See [PATCH_NOTES.md](./PATCH_NOTES.md) for full changelog.
