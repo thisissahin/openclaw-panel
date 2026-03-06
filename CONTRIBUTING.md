@@ -67,4 +67,6 @@ Use private disclosure via repository security contact/path.
 
 - Default integration branch: `dev`
 - `main` is for stable/release-ready changes
-- Maintainers may squash commits on merge
+- **PR-only policy:** contributors open PRs; no direct push/merge to `dev` or `main`
+- Maintainers merge reviewed PRs (squash/rebase/merge as appropriate)
+- Branch protection should enforce this policy
