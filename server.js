@@ -497,7 +497,7 @@ app.post('/api/chat/send', (req, res) => {
 // ── Actions ───────────────────────────────────────────────────
 const SAFE_ACTIONS = {
   restart: () => execSync('openclaw gateway restart', { timeout: 10000 }).toString(),
-  update:  () => execSync('openclaw gateway update',  { timeout: 120000 }).toString(),
+  update:  () => execSync('openclaw update --yes',     { timeout: 1200000 }).toString(),
   df:      () => execSync('df -h /',                  { timeout: 5000 }).toString(),
   free:    () => execSync('free -h',                  { timeout: 5000 }).toString(),
   status:  () => execSync('openclaw gateway status',  { timeout: 10000 }).toString(),

@@ -7,6 +7,7 @@ A mobile-optimized developer control panel for [OpenClaw](https://github.com/ope
 ## Features
 
 - **Dashboard** — Real-time agent status, model info, and token usage. Click any agent card to open its detail view.
+  - Includes **Create Agent** (➕): spin up a new Telegram-bound agent from the panel by providing name, optional id, bot token, and optional model.
 - **Agent Detail** — Per-agent deep-dive with three panels:
   - **Session** — Context window usage bar, model info, Compact and Reset actions
   - **Usage & Cost** — Token/cost stats with a 7-day bar chart and per-provider rate-limit gauges
@@ -81,6 +82,19 @@ To use a fixed token:
 ```bash
 PANEL_TOKEN=your-secret-token node server.js
 ```
+
+### Create a new agent from the panel
+
+1. Open **Dashboard**
+2. Tap the **➕** button in the status bar
+3. Fill in:
+   - **Name** (required)
+   - **Agent ID** (optional; auto-generated from name)
+   - **Telegram Bot Token** (required; validated with Telegram `getMe`)
+   - **Model** (optional)
+4. Tap **Create Agent**
+
+The backend will add the new agent + Telegram account + binding in OpenClaw config, create workspace folders, and seed an `IDENTITY.md` for the new agent.
 
 ### 4. Expose via HTTPS (Cloudflare Tunnel)
 
